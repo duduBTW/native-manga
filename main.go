@@ -8,12 +8,14 @@ import (
 	"bytes"
 	"math"
 	"image"
+	"image/color"
 	_ "image/jpeg"
 	_ "image/png"
 	"encoding/json"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
 type Transform int
@@ -210,6 +212,19 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		clipped := screen.SubImage(clipRect).(*ebiten.Image)
 
 		clipped.DrawImage(cImage, op)
+	}
+
+	for i, _ := range g.Images {
+		color := color.RGBA{ R: 0, G: 0, B: 255, A: 55 }
+		if i <= g.CurrentPage {
+			color.A = 255 
+		}
+		var gap float32 = 4
+		totalItems := float32(len(g.Images))
+		size := float32(screenWidth) / totalItems
+		x := size * float32(i)
+		var height float32 = 8 
+		vector.DrawFilledRect(screen, x, float32(screenHeight) - height, size - gap, height, color, true)
 	}
 }
 
