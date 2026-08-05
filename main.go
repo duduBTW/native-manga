@@ -162,7 +162,7 @@ func (g *Game) Update() error {
 	scrollX, scrollY := ebiten.Wheel()
 
 	if mouseY > g.ScreenHeight - 80	{
-		for i, _ := range g.Images {
+		for i := 0; i < len(g.Images); i++ {
 			g.PaginationPageHeight[i].Current = 8  
 			
 			if mouseY > g.ScreenHeight - 24 {
@@ -172,7 +172,14 @@ func (g *Game) Update() error {
 					if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) {
 						g.NavigateTo(i)
 					}
-					g.PaginationPageHeight[i].Current = 24 
+					if i > 0 {
+						g.PaginationPageHeight[i - 1].Current = 14
+					}
+					g.PaginationPageHeight[i].Current = 24
+					if len(g.Images) >= i + 2 {
+						g.PaginationPageHeight[i + 1].Current = 14
+						i++
+					}
 				}
 			} 
 		}
