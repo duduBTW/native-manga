@@ -32,6 +32,7 @@ type PageAxisTransform struct {
 	Initial float64
 	Current float64
 }
+
 func (t *PageAxisTransform) CalculateLast() float64 {
 	return t.Last + t.Current - t.Initial
 }
@@ -41,11 +42,17 @@ type PageTransform struct {
 	Scale float64
 }
 
+type PaginationPageHeight struct {
+	Current float32
+	Visual float32
+}
+
 type Game struct{
 	Images []*ebiten.Image
 	PageTransform []PageTransform
 	CurrentPage int
 	VisualPage float64 
+	PaginationPageHeight []PaginationPageHeight
 }
 
 func (g *Game) GetCurrentPageTransform(pageIndex int) *PageTransform {
@@ -80,6 +87,7 @@ func (g *Game) GetPageTransform(prop Transform, pageIndex int) (float64, float64
 
 	return 0, 0
 }
+
 func (g *Game) SetPageTransform(prop Transform, x, y float64) {
 	transform := g.GetCurrentPageTransform(CurrentPage)
 	switch prop {
@@ -189,7 +197,24 @@ func (g *Game) Update() error {
 	return nil
 }
 
-func (g *Game) Draw(screen *ebiten.Image) {
+func (g *Game) DrawPagination(screen *ebiten.Image) {
+	screenWidth, screenHeight := float64(screen.Bounds().Dx()), float64(screen.Bounds().Dy())
+
+	for i, _ := range g.Images {
+		color := color.RGBA{ R: 0, G: 0, B: 255, A: 55 }
+		if i <= g.CurrentPage {
+			color.A = 255 
+		}
+		var gap float32 = g.PaginationPageHeight[i].Visual 
+		totalItems := float32(len(g.Images))
+		size := (float32(screenWidth) - (gap * totalItems)) / totalItems
+		x := size * float32(i)
+		var height float32 = 8 
+		vector.DrawFilledRect(screen, x + gap * float32(i), float32(screenHeight) - height, size, height, color, true)
+	}
+}
+
+func (g *Game) DrawPages(screen *ebiten.Image) {
 	screenWidth, screenHeight := float64(screen.Bounds().Dx()), float64(screen.Bounds().Dy())
 	
 	for i, cImage := range g.Images {
@@ -213,19 +238,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 		clipped.DrawImage(cImage, op)
 	}
+}
 
-	for i, _ := range g.Images {
-		color := color.RGBA{ R: 0, G: 0, B: 255, A: 55 }
-		if i <= g.CurrentPage {
-			color.A = 255 
-		}
-		var gap float32 = 4
-		totalItems := float32(len(g.Images))
-		size := float32(screenWidth) / totalItems
-		x := size * float32(i)
-		var height float32 = 8 
-		vector.DrawFilledRect(screen, x, float32(screenHeight) - height, size - gap, height, color, true)
-	}
+func (g *Game) Draw(screen *ebiten.Image) {
+	g.DrawPages(screen)
+	g.DrawPagination(screen)
 }
 
 func LoadImageFromUrl(url string) (*ebiten.Image, error) {
@@ -294,8 +311,13 @@ func main() {
 	 }
 
 	game.PageTransform = make([]PageTransform, len(chaptersResult.Chapter.Data))
+	game.PaginationPageHeight = make([]PaginationPageHeight, len(chaptersResult.Chapter.Data))
 	for i := range game.PageTransform {
     	game.PageTransform[i].Scale = 1.0
+    	game.PaginationPageHeight[i] = PaginationPageHeight{
+			Current: 4,
+			Visual: 4,
+		}
 	}
 
 	for _, chapterData := range chaptersResult.Chapter.Data {
