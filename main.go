@@ -53,6 +53,9 @@ type Game struct{
 	CurrentPage int
 	VisualPage float64 
 	PaginationPageHeight []PaginationPageHeight
+
+	ScreenHeight float64
+	ScreenWidth float64
 }
 
 func (g *Game) GetCurrentPageTransform(pageIndex int) *PageTransform {
@@ -123,31 +126,61 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeigh
             g.PageTransform[i].X.Last = (float64(outsideWidth) - imgWidth) / 2
         }
     }
+
+	g.ScreenWidth = float64(outsideWidth)
+    g.ScreenHeight = float64(outsideHeight)
+
     return outsideWidth, outsideHeight
 }
 
-func (g *Game) PreviousPage() {
-	if g.CurrentPage <= 0 {
-		return
+func (g *Game) NavigateTo(target int) error {
+		if target < 0 || target + 1 > len(g.Images) {
+		return errors.New("Target out of bounds")
 	}
 	
-	g.CurrentPage--
+	g.CurrentPage = target
+	return nil
+}
+
+func (g *Game) PreviousPage() {
+	g.NavigateTo(g.CurrentPage - 1)
 }
 func (g *Game) NextPage() {
-	if g.CurrentPage + 1 >= len(g.Images) {
-		return
-	}
-	
-	g.CurrentPage++
+	g.NavigateTo(g.CurrentPage + 1)
 }
 func (g *Game) UpdateAnimation() {
 	g.VisualPage += (float64(g.CurrentPage) - g.VisualPage) * 0.1
+	for i, _ := range g.Images {
+		pageHeight := g.PaginationPageHeight[i]
+		g.PaginationPageHeight[i].Visual += (pageHeight.Current - pageHeight.Visual) * 0.12
+	}
 }
 
 func (g *Game) Update() error {
 	_mouseX, _mouseY := ebiten.CursorPosition()
 	mouseX, mouseY := float64(_mouseX), float64(_mouseY) 
 	scrollX, scrollY := ebiten.Wheel()
+
+	if mouseY > g.ScreenHeight - 80	{
+		for i, _ := range g.Images {
+			g.PaginationPageHeight[i].Current = 8  
+			
+			if mouseY > g.ScreenHeight - 24 {
+				size, x := g.PageSize(i)
+
+				if mouseX > float64(x) && mouseX < float64(x + size) {
+					if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) {
+						g.NavigateTo(i)
+					}
+					g.PaginationPageHeight[i].Current = 24 
+				}
+			} 
+		}
+	} else {
+		for i, _ := range g.Images {
+			g.PaginationPageHeight[i].Current = 0  
+		}	
+	}
 
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		g.SetPageTransform(Initial, mouseX, mouseY)
@@ -193,47 +226,49 @@ func (g *Game) Update() error {
 		g.SetPageTransform(Last, lastX + (scrollX * multiplier), lastY + (scrollY * multiplier))
 	}
 
+
 	g.UpdateAnimation()
 	return nil
 }
 
-func (g *Game) DrawPagination(screen *ebiten.Image) {
-	screenWidth, screenHeight := float64(screen.Bounds().Dx()), float64(screen.Bounds().Dy())
+func (g *Game) PageSize(i int) (float32, float32) {
+	var gap float32 = 6 
+	totalItems := float32(len(g.Images))
+	size := (float32(g.ScreenWidth) - (gap * totalItems)) / totalItems
+	x := (size * float32(i)) + (gap * float32(i))
+	return size, x
+}
 
+func (g *Game) DrawPagination(screen *ebiten.Image) {
 	for i, _ := range g.Images {
 		color := color.RGBA{ R: 0, G: 0, B: 255, A: 55 }
 		if i <= g.CurrentPage {
 			color.A = 255 
 		}
-		var gap float32 = g.PaginationPageHeight[i].Visual 
-		totalItems := float32(len(g.Images))
-		size := (float32(screenWidth) - (gap * totalItems)) / totalItems
-		x := size * float32(i)
-		var height float32 = 8 
-		vector.DrawFilledRect(screen, x + gap * float32(i), float32(screenHeight) - height, size, height, color, true)
+		size, x := g.PageSize(i)
+		height := float32(g.PaginationPageHeight[i].Visual) 
+		vector.DrawFilledRect(screen, x, float32(g.ScreenHeight) - height, size, height, color, true)
 	}
 }
 
 func (g *Game) DrawPages(screen *ebiten.Image) {
-	screenWidth, screenHeight := float64(screen.Bounds().Dx()), float64(screen.Bounds().Dy())
-	
 	for i, cImage := range g.Images {
 		op := &ebiten.DrawImageOptions{}
 		translateX, translateY := g.GetPageTransformDiff(i) 
 		var scale float64 = 1
 
 		imageWidth := float64(cImage.Bounds().Dx())
-		if screenWidth < imageWidth {
-			scale = screenWidth / imageWidth 
+		if g.ScreenWidth < imageWidth {
+			scale = g.ScreenWidth / imageWidth 
 		}
 		
 		scale *= g.GetPageScale(i)
 		op.GeoM.Scale(scale, scale)
 		
-		currentPageXOffset := (float64(i) - g.VisualPage) * screenWidth
+		currentPageXOffset := (float64(i) - g.VisualPage) * g.ScreenWidth
 		op.GeoM.Translate(translateX + currentPageXOffset, translateY)
 
-		clipRect := image.Rect(int(currentPageXOffset), 0, int(currentPageXOffset + screenWidth), int(screenHeight))
+		clipRect := image.Rect(int(currentPageXOffset), 0, int(currentPageXOffset + g.ScreenWidth), int(g.ScreenHeight))
 		clipped := screen.SubImage(clipRect).(*ebiten.Image)
 
 		clipped.DrawImage(cImage, op)
@@ -284,7 +319,7 @@ type MangedexChapterResult struct {
 func FetchManga() (error, MangedexChapterResult) {
 	var result MangedexChapterResult
 
-	url := "https://api.mangadex.org/at-home/server/598ad0b5-110f-4946-a328-0e1755cfa189"
+	url := "https://api.mangadex.org/at-home/server/2230afe5-c254-425a-8e78-8d31011a915e"
 	res, err := http.Get(url)
 	if err != nil {
 		return err, result
@@ -314,10 +349,6 @@ func main() {
 	game.PaginationPageHeight = make([]PaginationPageHeight, len(chaptersResult.Chapter.Data))
 	for i := range game.PageTransform {
     	game.PageTransform[i].Scale = 1.0
-    	game.PaginationPageHeight[i] = PaginationPageHeight{
-			Current: 4,
-			Visual: 4,
-		}
 	}
 
 	for _, chapterData := range chaptersResult.Chapter.Data {
@@ -326,7 +357,7 @@ func main() {
 	}
 	// img, _ := LoadImageFromUrl("https://uploads.mangadex.org/data/3303dd03ac8d27452cce3f2a882e94b2/2-2a5e95dfec7f15cd01f9a63835be18a22fb77a10fd2d62858c7dcbb6e6c622f9.png")
 	// game.Images = append(game.Images, img)
-	ebiten.SetWindowSize(1280, 720)
+	ebiten.SetWindowSize(1280, 1320)
 	ebiten.SetWindowTitle("Hello, World!")
 	ebiten.SetWindowResizable(true)
 	if err := ebiten.RunGame(&game); err != nil {
