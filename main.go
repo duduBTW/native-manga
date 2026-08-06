@@ -27,14 +27,19 @@ const (
 
 const CurrentPage = -1
 
+type PageAxisTransformLast struct {
+ 	Real float64
+	Visual float64
+}
+
 type PageAxisTransform struct {
-	Last float64
+	Last PageAxisTransformLast 
 	Initial float64
 	Current float64
 }
 
 func (t *PageAxisTransform) CalculateLast() float64 {
-	return t.Last + t.Current - t.Initial
+	return t.Last.Real + t.Current - t.Initial
 }
 
 type PageTransform struct {
@@ -81,7 +86,7 @@ func (g *Game) GetPageTransform(prop Transform, pageIndex int) (float64, float64
 	transform := g.GetCurrentPageTransform(pageIndex)
 	switch prop {
 	case Last:
-		return transform.X.Last, transform.Y.Last
+		return transform.X.Last.Visual, transform.Y.Last.Visual
 	case Initial:
 		return transform.X.Initial, transform.Y.Initial
 	case Current:
@@ -91,12 +96,15 @@ func (g *Game) GetPageTransform(prop Transform, pageIndex int) (float64, float64
 	return 0, 0
 }
 
-func (g *Game) SetPageTransform(prop Transform, x, y float64) {
-	transform := g.GetCurrentPageTransform(CurrentPage)
+func (g *Game) SetPageTransform(prop Transform, x, y float64, pageIndex int) {
+	transform := g.GetCurrentPageTransform(pageIndex)
 	switch prop {
 		case Last: {
-			transform.X.Last = x
-			transform.Y.Last = y
+			transform.X.Last.Real = x
+			transform.Y.Last.Real = y
+			
+			transform.X.Last.Visual = x
+			transform.Y.Last.Visual = y
 		}
 		case Initial: {
 			transform.X.Initial = x
@@ -123,12 +131,10 @@ func (g *Game) CenterPages() {
     	imgWidth, imgHeight := float64(img.Bounds().Dx()), float64(img.Bounds().Dy())
 		g.PageTransform[i].Scale = 1
 		if imgWidth < g.ScreenWidth {
-			g.PageTransform[i].Y.Last = 0
-			g.PageTransform[i].X.Last = (g.ScreenWidth - imgWidth) / 2
+			g.SetPageTransform(Last, (g.ScreenWidth - imgWidth) / 2, 0, i)
 		} else {
-			g.PageTransform[i].X.Last = 0
 			scale := g.ScreenWidth / imgWidth 
-			g.PageTransform[i].Y.Last = (g.ScreenHeight - imgHeight * scale) / 2
+			g.SetPageTransform(Last, 0, (g.ScreenHeight - imgHeight * scale) / 2, i)
 		}
 	}
 }
@@ -165,6 +171,9 @@ func (g *Game) UpdateAnimation() {
 	for i, _ := range g.Images {
 		pageHeight := g.PaginationPageHeight[i]
 		g.PaginationPageHeight[i].Visual += (pageHeight.Current - pageHeight.Visual) * 0.12
+
+		pageYLast := g.PageTransform[i].Y.Last
+		g.PageTransform[i].Y.Last.Visual += (pageYLast.Real - pageYLast.Visual) * 0.14
 	}
 }
 
@@ -211,23 +220,23 @@ func (g *Game) PaginationUpdate() {
 func (g *Game) Update() error {
 	_mouseX, _mouseY := ebiten.CursorPosition()
 	mouseX, mouseY := float64(_mouseX), float64(_mouseY) 
-	scrollX, scrollY := ebiten.Wheel()
+	_, scrollY := ebiten.Wheel()
 
 	g.PaginationUpdate()
 
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-		g.SetPageTransform(Initial, mouseX, mouseY)
+		g.SetPageTransform(Initial, mouseX, mouseY, CurrentPage)
 	}
 
 	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
-		g.SetPageTransform(Current, mouseX, mouseY)
+		g.SetPageTransform(Current, mouseX, mouseY, CurrentPage)
 	}
 
 	if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) {
 		lastX, lastY := g.PageCalculateLast(CurrentPage)
-		g.SetPageTransform(Last, lastX, lastY) 
-		g.SetPageTransform(Current, 0, 0)
-		g.SetPageTransform(Initial, 0, 0)
+		g.SetPageTransform(Last, lastX, lastY, CurrentPage) 
+		g.SetPageTransform(Current, 0, 0, CurrentPage)
+		g.SetPageTransform(Initial, 0, 0, CurrentPage)
 	}
 	
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
@@ -250,13 +259,15 @@ func (g *Game) Update() error {
 			newLastX := mouseX - (mouseX - lastX) * scaleFactor
 			newLastY := mouseY - (mouseY - lastY) * scaleFactor
 
-			g.SetPageTransform(Last, newLastX, newLastY)
+			g.SetPageTransform(Last, newLastX, newLastY, CurrentPage)
 			g.SetPageScale(newScale)
 		}
 	} else {
 		var multiplier float64 = 50
-		lastX, lastY := g.GetPageTransform(Last, CurrentPage)
-		g.SetPageTransform(Last, lastX + (scrollX * multiplier), lastY + (scrollY * multiplier))
+		// lastX, lastY := g.GetPageTransform(Last, CurrentPage)
+		lastY := g.PageTransform[g.CurrentPage].Y.Last.Real
+		// g.PageTransform[g.CurrentPage].X.Last.Real = lastX + (scrollX * multiplier)
+		g.PageTransform[g.CurrentPage].Y.Last.Real = lastY + (scrollY * multiplier)
 	}
 
 
