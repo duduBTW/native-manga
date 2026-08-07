@@ -190,9 +190,12 @@ func (g *Game) PaginationUpdate() {
 	} 
 
 	for i := 0; i < len(g.Images); i++ {
-		g.PaginationPageHeight[i].Current = 8  
-			
-		if mouseY > g.ScreenHeight - 24 {
+		var defaultHeight float32 = 10
+		var aroundHoveredHeight float32 = defaultHeight + 10 
+		var hoveredHeight float32 = aroundHoveredHeight + 12
+
+		g.PaginationPageHeight[i].Current = defaultHeight 
+		if mouseY > g.ScreenHeight - float64(hoveredHeight) {
 			size, x := g.PageSize(i)
 
 			if mouseX > float64(x) && mouseX < float64(x + size) {
@@ -202,14 +205,14 @@ func (g *Game) PaginationUpdate() {
 
 				isFirst := i == 0
 				if !isFirst {
-					g.PaginationPageHeight[i - 1].Current = 14
+					g.PaginationPageHeight[i - 1].Current = aroundHoveredHeight 
 				}
 				
-				g.PaginationPageHeight[i].Current = 24
+				g.PaginationPageHeight[i].Current = hoveredHeight 
 
 				isLast := len(g.Images) == i + 1 
 				if !isLast {
-					g.PaginationPageHeight[i + 1].Current = 14
+					g.PaginationPageHeight[i + 1].Current = aroundHoveredHeight 
 					i++
 				}
 			}
@@ -263,11 +266,19 @@ func (g *Game) Update() error {
 			g.SetPageScale(newScale)
 		}
 	} else {
-		var multiplier float64 = 50
+		var multiplier float64 = 72
+		var keyboardMultiplier float64 = 32
 		// lastX, lastY := g.GetPageTransform(Last, CurrentPage)
 		lastY := g.PageTransform[g.CurrentPage].Y.Last.Real
 		// g.PageTransform[g.CurrentPage].X.Last.Real = lastX + (scrollX * multiplier)
-		g.PageTransform[g.CurrentPage].Y.Last.Real = lastY + (scrollY * multiplier)
+
+		yScrollAmount := lastY + (scrollY * multiplier)
+		if ebiten.IsKeyPressed(ebiten.KeyArrowDown) {
+			yScrollAmount -= keyboardMultiplier 
+		} else if ebiten.IsKeyPressed(ebiten.KeyArrowUp) {
+			yScrollAmount += keyboardMultiplier 
+		}
+		g.PageTransform[g.CurrentPage].Y.Last.Real = yScrollAmount
 	}
 
 
@@ -285,13 +296,15 @@ func (g *Game) PageSize(i int) (float32, float32) {
 
 func (g *Game) DrawPagination(screen *ebiten.Image) {
 	for i, _ := range g.Images {
-		color := color.RGBA{ R: 0, G: 0, B: 255, A: 55 }
+		w, x := g.PageSize(i) 
+		h := float32(g.PaginationPageHeight[i].Visual) 
+		y := float32(g.ScreenHeight) - h 
+		vector.FillRect(screen, x, y, w, h, color.NRGBA{ R: 255, G: 255, B: 255, A: 100 }, true)
 		if i <= g.CurrentPage {
-			color.A = 255 
+			vector.FillRect(screen, x, y, w, h, color.NRGBA{ R: 255, G: 255, B: 255, A: 255 }, true)
 		}
-		size, x := g.PageSize(i)
-		height := float32(g.PaginationPageHeight[i].Visual) 
-		vector.DrawFilledRect(screen, x, float32(g.ScreenHeight) - height, size, height, color, true)
+			
+		vector.StrokeRect(screen, x - 2, y - 2, w + 2, h + 2, 2, color.NRGBA{ R: 0, G: 0, B: 0, A: 255 }, true)
 	}
 }
 
@@ -314,7 +327,6 @@ func (g *Game) DrawPages(screen *ebiten.Image) {
 
 		clipRect := image.Rect(int(currentPageXOffset), 0, int(currentPageXOffset + g.ScreenWidth), int(g.ScreenHeight))
 		clipped := screen.SubImage(clipRect).(*ebiten.Image)
-
 		clipped.DrawImage(cImage, op)
 	}
 }
