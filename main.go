@@ -2,7 +2,6 @@ package main
 
 import (
 	"log"
-	"fmt"
 	"net/http"
 	"io"
 	"errors"
@@ -378,37 +377,53 @@ func (g *Game) DrawPages(screen *ebiten.Image) {
 	}
 }
 
-func (g *Game) DrawManga(screen *ebiten.Image) {
-	vector.FillRect(screen, 0, 0, float32(g.ScreenWidth), float32(g.ScreenHeight), color.NRGBA{ R: 255, G: 255, B: 255, A: 255 }, true)
-	
+type Bounds struct {
+	X, Y, W, H float64
+}
+func (g *Game) DrawMangaCover(screen *ebiten.Image, bounds Bounds) {
 	op := &ebiten.DrawImageOptions{}
 	
 	imageOriginalWidth, imageOriginalHeight := float64(g.CoverArtImage.Bounds().Dx()), float64(g.CoverArtImage.Bounds().Dy())
-	var imageWidth float64 = 400
-	scale := imageWidth / imageOriginalWidth 
+	var scale float64 = 1
+
+	if imageOriginalWidth > bounds.W {
+		scale = bounds.W / imageOriginalWidth 
+	} else if imageOriginalHeight > bounds.H {
+		scale = bounds.H / imageOriginalHeight
+	}
+	scale = math.Min(1, scale)
 	imageHeight := imageOriginalHeight * scale
+	imageWidth := imageOriginalWidth * scale
 
 	op.GeoM.Scale(scale, scale)
-
-	x := math.Max(40, (g.ScreenWidth - 1600) / 2)
-	var y float64 = 100
-	startYChapter := y + imageHeight 
-	
-	op.GeoM.Translate(x, y)
-
+	op.GeoM.Translate(bounds.X, bounds.Y)
+	op.GeoM.Translate(((imageWidth / 2) - (bounds.W / 2)) * -1, ((imageHeight / 2) - (bounds.H / 2)) * -1)
 	screen.DrawImage(g.CoverArtImage, op)
+}
+
+func (g *Game) DrawMangaDetails(screen *ebiten.Image, bounds Bounds) {
 	textOp := &text.DrawOptions{}
 	textOp.ColorScale.ScaleWithColor(color.Black)
-	textOp.GeoM.Translate(x + imageWidth + 20, startYChapter - g.FontTitle.Size)
+	textOp.GeoM.Translate(bounds.X + 80, bounds.Y + bounds.H - g.FontTitle.Size - 80)
 	text.Draw(screen, g.MangaTitle, g.FontTitle, textOp)
+}
 
+func (g *Game) DrawManga(screen *ebiten.Image) {
+	vector.FillRect(screen, 0, 0, float32(g.ScreenWidth), float32(g.ScreenHeight), color.NRGBA{ R: 255, G: 255, B: 255, A: 255 }, true)
+
+	halfScreen := g.ScreenWidth / 2
+	g.DrawMangaCover(screen, Bounds{ X: halfScreen, Y: 0, W: halfScreen, H: g.ScreenHeight })
+	g.DrawMangaDetails(screen, Bounds{ X: 0, Y: 0, W: halfScreen, H: g.ScreenHeight })
+	// x, y, imgWidth, imageHeight := g.DrawMangaCover(screen, Bounds{ X: g.ScreenWidth / 2, Y: 0, W: g.ScreenWidth / 2, H: g.ScreenHeight })
+
+	// startYChapter := y + imageHeight 
 	// Chapters
-	for i, chapter := range g.MangaChapterData {
-		chapterTextOp := &text.DrawOptions{}
-		chapterTextOp.ColorScale.ScaleWithColor(color.Black)
-		chapterTextOp.GeoM.Translate(x, startYChapter + 50 + (g.FontTitle.Size * float64(i)))
-		text.Draw(screen, chapter.Attributes.Chapter + "  " + chapter.Attributes.Title, g.FontBody, chapterTextOp)
-	}
+	// for i, chapter := range g.MangaChapterData {
+	//	chapterTextOp := &text.DrawOptions{}
+	//	chapterTextOp.ColorScale.ScaleWithColor(color.Black)
+	//	chapterTextOp.GeoM.Translate(x, startYChapter + 50 + (g.FontTitle.Size * float64(i)))
+	//	text.Draw(screen, chapter.Attributes.Chapter + "  " + chapter.Attributes.Title, g.FontBody, chapterTextOp)
+	//}
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
