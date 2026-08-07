@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"fmt"
 	"net/http"
 	"io"
 	"errors"
@@ -12,11 +13,16 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"encoding/json"
+	_ "embed"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
+	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
+
+//go:embed assets/BebasNeue-Regular.ttf
+var titleFontTTF []byte
 
 type Screen int
 const (
@@ -70,6 +76,10 @@ type Game struct{
 	ScreenWidth float64
 
 	CurrentScreen Screen
+	
+	MangaTitle string
+	MangaChapterData []MangadexMangaChapterData
+	FontTitle *text.GoTextFace
 }
 
 func (g *Game) GetCurrentPageTransform(pageIndex int) *PageTransform {
@@ -368,15 +378,32 @@ func (g *Game) DrawManga(screen *ebiten.Image) {
 	
 	op := &ebiten.DrawImageOptions{}
 	
-	imageWidth := float64(g.CoverArtImage.Bounds().Dx())
+	imageOriginalWidth, imageOriginalHeight := float64(g.CoverArtImage.Bounds().Dx()), float64(g.CoverArtImage.Bounds().Dy())
+	var imageWidth float64 = 400
+	scale := imageWidth / imageOriginalWidth 
+	imageHeight := imageOriginalHeight * scale
 
-	scale := 400 / imageWidth 
 	op.GeoM.Scale(scale, scale)
 
 	x := math.Max(40, (g.ScreenWidth - 1600) / 2)
-	op.GeoM.Translate(x, 100)
+	var y float64 = 100
+	startYChapter := y + imageHeight 
+	
+	op.GeoM.Translate(x, y)
 
 	screen.DrawImage(g.CoverArtImage, op)
+	textOp := &text.DrawOptions{}
+	textOp.ColorScale.ScaleWithColor(color.Black)
+	textOp.GeoM.Translate(x + imageWidth + 20, startYChapter - g.FontTitle.Size)
+	text.Draw(screen, g.MangaTitle, g.FontTitle, textOp)
+
+	// Chapters
+	for i, chapter := range g.MangaChapterData {
+		chapterTextOp := &text.DrawOptions{}
+		chapterTextOp.ColorScale.ScaleWithColor(color.Black)
+		chapterTextOp.GeoM.Translate(x, startYChapter + 50 + (g.FontTitle.Size * float64(i)))
+		text.Draw(screen, chapter.Attributes.Title, g.FontTitle, chapterTextOp)
+	}
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
@@ -416,17 +443,6 @@ func LoadImageFromUrl(url string) (*ebiten.Image, error) {
 	return ebiten.NewImageFromImage(img), nil
 }
 
-type MangedexChapter struct {
-	Hash string `json:"hash"`
-	Data []string `json:"data"`
-	DataSaver []string `json:"dataSaver"`
-}
-type MangedexChapterResult struct {
-	Result string `json:"result"`
-	BaseUrl string `json:"baseUrl"`
-	Chapter MangedexChapter
-}
-
 func (g *Game) FetchChapter() (error, MangedexChapterResult) {
 	var result MangedexChapterResult
 
@@ -463,40 +479,6 @@ func (g *Game) FetchChapter() (error, MangedexChapterResult) {
 	return nil, result 
 }
 
-type MangadexManga struct {
-	Result   string        `json:"result"`
-	Response string        `json:"response"`
-	Data     MangadexMangaData `json:"data"`
-}
-
-type MangadexMangaData struct {
-	Id            string                          `json:"id"`
-	Type          string                          `json:"type"`
-	Attributes    MangadexMangaAttributes         `json:"attributes"`
-	Relationships []MangadexMangaRelationship     `json:"relationships"`
-}
-
-type MangadexMangaAttributes struct {
-	Title map[string]string `json:"title"`
-}
-
-type MangadexMangaRelationship struct {
-	Id         string                        `json:"id"`
-	Type       string                        `json:"type"`
-	Related    string                        `json:"related,omitempty"`
-	Attributes *MangadexCoverArtAttributes   `json:"attributes,omitempty"`
-}
-
-type MangadexCoverArtAttributes struct {
-	Description string `json:"description"`
-	Volume      string `json:"volume"`
-	FileName    string `json:"fileName"`
-	Locale      string `json:"locale"`
-	CreatedAt   string `json:"createdAt"`
-	UpdatedAt   string `json:"updatedAt"`
-	Version     int    `json:"version"`
-}
-
 func (g *Game) FetchManga() (error, MangadexManga) {
 	var result MangadexManga
 
@@ -517,6 +499,11 @@ func (g *Game) FetchManga() (error, MangadexManga) {
 		return err, result 
 	}
 
+	for _, title := range result.Data.Attributes.Title {
+		g.MangaTitle = title
+		break
+	}
+
 	baseUrl := "https://mangadex.org/covers/"
 	coverArtFileName := ""
 	for _, relationship := range result.Data.Relationships {
@@ -534,14 +521,48 @@ func (g *Game) FetchManga() (error, MangadexManga) {
 	
 	return err, result
 }
+
+func (g *Game) FetchMangaChapters() (error, MangadexMangaChapterResponse) {
+	var result MangadexMangaChapterResponse 
+
+	url := "https://api.mangadex.org/manga/28b5d037-175d-4119-96f8-e860e408ebe9/feed?translatedLanguage[]=en&limit=96&includes[]=scanlation_group&includes[]=user&order[volume]=desc&order[chapter]=desc&offset=0&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic&includeUnavailable=0"
+	res, err := http.Get(url)
+	if err != nil {
+		return err, result
+	}
+
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return errors.New("Failed to fetch"), result
+	}
+
+	err = json.NewDecoder(res.Body).Decode(&result)
+	if err != nil {
+		return err, result 
+	}
+
+	fmt.Println(result.Data)
+	g.MangaChapterData = result.Data
+
+	return nil, result
+}
+
 func (g *Game) Fetch() (error) {
 	switch g.CurrentScreen {
 		case ChapterScreen: {
-			err, _ := g.FetchChapter()	
-			return err
+			err, _ := g.FetchChapter()
+			if err != nil {
+				return err
+			}
 		}	
 		case MangaScreen: {
 			err, _ := g.FetchManga()
+			if err != nil {
+				return err
+			}
+
+			err, _ = g.FetchMangaChapters()
 			return err
 		}
 	}	
@@ -549,9 +570,27 @@ func (g *Game) Fetch() (error) {
 	return nil
 }
 
+func (g *Game) LoadFonts() (error) {
+	textFaceSource, err := text.NewGoTextFaceSource(bytes.NewReader(titleFontTTF))	
+	if err != nil {
+		return err
+	}
+
+	g.FontTitle = &text.GoTextFace{
+		Source: textFaceSource,
+		Size: 40,
+	}
+
+	return nil
+}
+
 func main() {
 	g := Game{
 		CurrentScreen: MangaScreen,
+	}
+
+	if err := g.LoadFonts(); err != nil {
+		log.Fatal(err)
 	}
 
 	if err := g.Fetch(); err != nil {
