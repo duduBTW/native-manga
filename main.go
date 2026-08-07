@@ -24,6 +24,9 @@ import (
 //go:embed assets/BebasNeue-Regular.ttf
 var titleFontTTF []byte
 
+//go:embed assets/animeace2_reg.ttf
+var bodyRegularFontTTF []byte
+
 type Screen int
 const (
 	MangaScreen Screen = iota
@@ -79,7 +82,9 @@ type Game struct{
 	
 	MangaTitle string
 	MangaChapterData []MangadexMangaChapterData
+
 	FontTitle *text.GoTextFace
+	FontBody *text.GoTextFace
 }
 
 func (g *Game) GetCurrentPageTransform(pageIndex int) *PageTransform {
@@ -402,7 +407,7 @@ func (g *Game) DrawManga(screen *ebiten.Image) {
 		chapterTextOp := &text.DrawOptions{}
 		chapterTextOp.ColorScale.ScaleWithColor(color.Black)
 		chapterTextOp.GeoM.Translate(x, startYChapter + 50 + (g.FontTitle.Size * float64(i)))
-		text.Draw(screen, chapter.Attributes.Title, g.FontTitle, chapterTextOp)
+		text.Draw(screen, chapter.Attributes.Chapter + "  " + chapter.Attributes.Title, g.FontBody, chapterTextOp)
 	}
 }
 
@@ -542,7 +547,6 @@ func (g *Game) FetchMangaChapters() (error, MangadexMangaChapterResponse) {
 		return err, result 
 	}
 
-	fmt.Println(result.Data)
 	g.MangaChapterData = result.Data
 
 	return nil, result
@@ -571,16 +575,25 @@ func (g *Game) Fetch() (error) {
 }
 
 func (g *Game) LoadFonts() (error) {
-	textFaceSource, err := text.NewGoTextFaceSource(bytes.NewReader(titleFontTTF))	
+	titleTextFaceSource, err := text.NewGoTextFaceSource(bytes.NewReader(titleFontTTF))	
 	if err != nil {
 		return err
 	}
 
 	g.FontTitle = &text.GoTextFace{
-		Source: textFaceSource,
+		Source: titleTextFaceSource,
 		Size: 40,
 	}
 
+	bodyTextFaceSource, err := text.NewGoTextFaceSource(bytes.NewReader(bodyRegularFontTTF))	
+	if err != nil {
+		return err
+	}
+
+	g.FontBody = &text.GoTextFace{
+		Source: bodyTextFaceSource,
+		Size: 18,
+	}
 	return nil
 }
 
