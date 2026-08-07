@@ -60,6 +60,7 @@ type PaginationPageHeight struct {
 
 type Game struct{
 	Images []*ebiten.Image
+	CoverArtImage *ebiten.Image
 	PageTransform []PageTransform
 	CurrentPage int
 	VisualPage float64 
@@ -362,8 +363,27 @@ func (g *Game) DrawPages(screen *ebiten.Image) {
 	}
 }
 
+func (g *Game) DrawManga(screen *ebiten.Image) {
+	vector.FillRect(screen, 0, 0, float32(g.ScreenWidth), float32(g.ScreenHeight), color.NRGBA{ R: 255, G: 255, B: 255, A: 255 }, true)
+	
+	op := &ebiten.DrawImageOptions{}
+	
+	imageWidth := float64(g.CoverArtImage.Bounds().Dx())
+
+	scale := 400 / imageWidth 
+	op.GeoM.Scale(scale, scale)
+
+	x := math.Max(40, (g.ScreenWidth - 1600) / 2)
+	op.GeoM.Translate(x, 100)
+
+	screen.DrawImage(g.CoverArtImage, op)
+}
+
 func (g *Game) Draw(screen *ebiten.Image) {
 	switch g.CurrentScreen {
+		case MangaScreen: {
+			g.DrawManga(screen)
+		}
 		case ChapterScreen: {
 			g.DrawPages(screen)
 			g.DrawPagination(screen)	
@@ -441,22 +461,102 @@ func (g *Game) FetchChapter() (error, MangedexChapterResult) {
 	// game.Images = append(game.Images, img)
 
 	return nil, result 
- }
+}
 
-func (g *Game) Fetch() {
+type MangadexManga struct {
+	Result   string        `json:"result"`
+	Response string        `json:"response"`
+	Data     MangadexMangaData `json:"data"`
+}
+
+type MangadexMangaData struct {
+	Id            string                          `json:"id"`
+	Type          string                          `json:"type"`
+	Attributes    MangadexMangaAttributes         `json:"attributes"`
+	Relationships []MangadexMangaRelationship     `json:"relationships"`
+}
+
+type MangadexMangaAttributes struct {
+	Title map[string]string `json:"title"`
+}
+
+type MangadexMangaRelationship struct {
+	Id         string                        `json:"id"`
+	Type       string                        `json:"type"`
+	Related    string                        `json:"related,omitempty"`
+	Attributes *MangadexCoverArtAttributes   `json:"attributes,omitempty"`
+}
+
+type MangadexCoverArtAttributes struct {
+	Description string `json:"description"`
+	Volume      string `json:"volume"`
+	FileName    string `json:"fileName"`
+	Locale      string `json:"locale"`
+	CreatedAt   string `json:"createdAt"`
+	UpdatedAt   string `json:"updatedAt"`
+	Version     int    `json:"version"`
+}
+
+func (g *Game) FetchManga() (error, MangadexManga) {
+	var result MangadexManga
+
+	url := "https://api.mangadex.org/manga/28b5d037-175d-4119-96f8-e860e408ebe9?includes[]=cover_art"
+	res, err := http.Get(url)
+	if err != nil {
+		return err, result
+	}
+
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return errors.New("Failed to fetch"), result
+	}
+
+	err = json.NewDecoder(res.Body).Decode(&result)
+	if err != nil {
+		return err, result 
+	}
+
+	baseUrl := "https://mangadex.org/covers/"
+	coverArtFileName := ""
+	for _, relationship := range result.Data.Relationships {
+		switch relationship.Type {
+		case "cover_art":
+			coverArtFileName = relationship.Attributes.FileName
+		}
+	}
+	if coverArtFileName == "" {
+		return errors.New("Cover art not found"), result
+	}
+
+	imgCoverArt, _ := LoadImageFromUrl(baseUrl + result.Data.Id + "/" + coverArtFileName)
+	g.CoverArtImage = imgCoverArt
+	
+	return err, result
+}
+func (g *Game) Fetch() (error) {
 	switch g.CurrentScreen {
 		case ChapterScreen: {
-			g.FetchChapter()	
+			err, _ := g.FetchChapter()	
+			return err
 		}	
+		case MangaScreen: {
+			err, _ := g.FetchManga()
+			return err
+		}
 	}	
+	
+	return nil
 }
 
 func main() {
 	g := Game{
-		CurrentScreen: ChapterScreen,
+		CurrentScreen: MangaScreen,
 	}
 
-	g.Fetch()
+	if err := g.Fetch(); err != nil {
+		log.Fatal(err)
+	}
 
 	ebiten.SetWindowSize(800, 1200)
 	ebiten.SetWindowTitle("Hello, World!")
