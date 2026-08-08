@@ -16,6 +16,7 @@ type MangadexMangaData struct {
 
 type MangadexMangaAttributes struct {
 	Title map[string]string `json:"title"`
+	Description map[string]string `json:"description"`
 }
 
 type MangadexMangaRelationship struct {

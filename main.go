@@ -80,6 +80,7 @@ type Game struct{
 	CurrentScreen Screen
 	
 	MangaTitle string
+	MangaDescription string
 	MangaChapterData []MangadexMangaChapterData
 
 	FontTitle *text.GoTextFace
@@ -347,10 +348,10 @@ func (g *Game) DrawPagination(screen *ebiten.Image) {
 		y := float32(g.ScreenHeight) - h 
 		vector.FillRect(screen, x, y, w, h, color.NRGBA{ R: 255, G: 255, B: 255, A: 100 }, true)
 		if i <= g.CurrentPage {
-			vector.FillRect(screen, x, y, w, h, color.NRGBA{ R: 255, G: 255, B: 255, A: 255 }, true)
+			vector.FillRect(screen, x, y, w, h, color.White, true)
 		}
 			
-		vector.StrokeRect(screen, x - 2, y - 2, w + 2, h + 2, 2, color.NRGBA{ R: 0, G: 0, B: 0, A: 255 }, true)
+		vector.StrokeRect(screen, x - 2, y - 2, w + 2, h + 2, 2, color.Black, true)
 	}
 }
 
@@ -402,28 +403,52 @@ func (g *Game) DrawMangaCover(screen *ebiten.Image, bounds Bounds) {
 }
 
 func (g *Game) DrawMangaDetails(screen *ebiten.Image, bounds Bounds) {
-	textOp := &text.DrawOptions{}
-	textOp.ColorScale.ScaleWithColor(color.Black)
-	textOp.GeoM.Translate(bounds.X + 80, bounds.Y + bounds.H - g.FontTitle.Size - 80)
-	text.Draw(screen, g.MangaTitle, g.FontTitle, textOp)
+	titleOp := &text.DrawOptions{}
+	titleOp.ColorScale.ScaleWithColor(color.Black)
+	titleOp.GeoM.Translate(bounds.X + 80, bounds.Y + bounds.H - g.FontTitle.Size - 80)
+	text.Draw(screen, g.MangaTitle, g.FontTitle, titleOp)
+	
+	descriptionOp := &text.DrawOptions{}
+	descriptionOp.ColorScale.ScaleWithColor(color.NRGBA{ R: 0, G: 0, B: 0, A: 200 })
+	descriptionOp.GeoM.Translate(bounds.X + 80, bounds.Y + 80)
+	descriptionOp.LineSpacing = g.FontBody.Size
+	text.Draw(screen, g.MangaDescription, g.FontBody, descriptionOp)
 }
 
+func (g *Game) DrawMangaChapterPage(screen *ebiten.Image, chapters []MangadexMangaChapterData, bounds Bounds, rowHeight float64) {
+	for i, chapter := range chapters {
+		chapterTextOp := &text.DrawOptions{}
+		chapterTextOp.ColorScale.ScaleWithColor(color.Black)
+		chapterTextOp.GeoM.Translate(bounds.X, bounds.Y + (rowHeight * float64(i)))
+		text.Draw(screen, chapter.Attributes.Chapter + "  " + chapter.Attributes.Title, g.FontBody, chapterTextOp)
+	}
+}
+
+func (g *Game) DrawMangaChapters(screen *ebiten.Image, x, y float64) {
+	var padding float64 = 80
+	height := g.ScreenHeight - (padding * 2)
+
+	_, lineHeight := text.Measure("A", g.FontBody, 0)
+	itemPadding := 10.0
+	rowHeight := lineHeight + itemPadding 
+
+	chaptersPerPage := math.Floor(height / rowHeight) // whole rows only, not fractional
+	chapterCount := float64(len(g.MangaChapterData))
+
+	for i := 0.0; i < math.Ceil(chapterCount / chaptersPerPage); i++ {
+		start := chaptersPerPage * i
+		end := math.Min(start + chaptersPerPage, chapterCount)
+		halfScreen := g.ScreenWidth / 2
+		g.DrawMangaChapterPage(screen, g.MangaChapterData[int(start):int(end)], Bounds{ X: (halfScreen * i) + x + padding, Y: y + padding, W: halfScreen - (padding * 2), H: height }, rowHeight)
+	}
+}
 func (g *Game) DrawManga(screen *ebiten.Image) {
 	vector.FillRect(screen, 0, 0, float32(g.ScreenWidth), float32(g.ScreenHeight), color.NRGBA{ R: 255, G: 255, B: 255, A: 255 }, true)
 
-	halfScreen := g.ScreenWidth / 2
-	g.DrawMangaCover(screen, Bounds{ X: halfScreen, Y: 0, W: halfScreen, H: g.ScreenHeight })
-	g.DrawMangaDetails(screen, Bounds{ X: 0, Y: 0, W: halfScreen, H: g.ScreenHeight })
-	// x, y, imgWidth, imageHeight := g.DrawMangaCover(screen, Bounds{ X: g.ScreenWidth / 2, Y: 0, W: g.ScreenWidth / 2, H: g.ScreenHeight })
-
-	// startYChapter := y + imageHeight 
-	// Chapters
-	// for i, chapter := range g.MangaChapterData {
-	//	chapterTextOp := &text.DrawOptions{}
-	//	chapterTextOp.ColorScale.ScaleWithColor(color.Black)
-	//	chapterTextOp.GeoM.Translate(x, startYChapter + 50 + (g.FontTitle.Size * float64(i)))
-	//	text.Draw(screen, chapter.Attributes.Chapter + "  " + chapter.Attributes.Title, g.FontBody, chapterTextOp)
-	//}
+	//halfScreen := g.ScreenWidth / 2
+	//g.DrawMangaCover(screen, Bounds{ X: halfScreen, Y: 0, W: halfScreen, H: g.ScreenHeight })
+	//g.DrawMangaDetails(screen, Bounds{ X: 0, Y: 0, W: halfScreen, H: g.ScreenHeight })
+	g.DrawMangaChapters(screen, 0, 0)
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
@@ -521,6 +546,11 @@ func (g *Game) FetchManga() (error, MangadexManga) {
 
 	for _, title := range result.Data.Attributes.Title {
 		g.MangaTitle = title
+		break
+	}
+
+	for _, description := range result.Data.Attributes.Description {
+		g.MangaDescription = description 
 		break
 	}
 
