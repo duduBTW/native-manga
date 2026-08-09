@@ -183,21 +183,25 @@ func (g *Game) SetPageScale(value float64) {
 	transform.Scale = value
 }
 
+func (g *Game) CenterPage(img *ebiten.Image, position int) {
+	imgWidth, imgHeight := float64(img.Bounds().Dx()), float64(img.Bounds().Dy())
+	g.PageTransform[position].Scale = 1
+	if imgWidth < g.ScreenWidth {
+		g.SetPageTransform(Last, (g.ScreenWidth - imgWidth) / 2, 0, position)
+	} else {
+		scale := g.ScreenWidth / imgWidth 
+		g.SetPageTransform(Last, 0, (g.ScreenHeight - imgHeight * scale) / 2, position)
+	}
+}
+
 func (g *Game) CenterPages() {
 	for i, cId := range g.ChapterData.Data {
 		img, ok := g.PageImages[cId]
 		if !ok {
 			continue
 		}
-
-    	imgWidth, imgHeight := float64(img.Bounds().Dx()), float64(img.Bounds().Dy())
-		g.PageTransform[i].Scale = 1
-		if imgWidth < g.ScreenWidth {
-			g.SetPageTransform(Last, (g.ScreenWidth - imgWidth) / 2, 0, i)
-		} else {
-			scale := g.ScreenWidth / imgWidth 
-			g.SetPageTransform(Last, 0, (g.ScreenHeight - imgHeight * scale) / 2, i)
-		}
+		
+		g.CenterPage(img, i)
 	}
 }
 func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
@@ -387,6 +391,17 @@ func (g *Game) Update() error {
 				select {
 					case res := <-g.FetchImageResult: {
 						g.PageImages[res.Id] = ebiten.NewImageFromImage(res.Image)
+
+						position := -1
+						for i, data := range g.ChapterData.Data {
+							if data == res.Id {
+								position = i
+							}
+						}
+
+						if position != -1 {		
+							g.CenterPage(g.PageImages[res.Id], position)
+						}
 					}
 					default: {}
 				}
@@ -528,7 +543,7 @@ func (g *Game) DrawMangaChapterPage(screen *ebiten.Image, chapters []MangadexMan
 		x := bounds.X
 		y := bounds.Y + (rowHeight * float64(i))
 		chapterTextOp.GeoM.Translate(x, y)
-		text.Draw(screen, chapter.Attributes.Chapter + "  " + chapter.Attributes.Title, g.FontBody, chapterTextOp)
+		text.Draw(screen, "Ch. " + chapter.Attributes.Chapter + "  " + chapter.Attributes.Title, g.FontBody, chapterTextOp)
 
 		g.ClickableRegions = append(g.ClickableRegions, ClickableRegion{
 			Bounds: Bounds{ X: x, Y: y, W: bounds.W, H: rowHeight },
@@ -636,10 +651,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 }
 
+var mangaId string = "bdf12cc6-6946-4c09-889e-ae3f30446566"
 func (g *Game) FetchManga() (error, MangadexManga) {
 	var result MangadexManga
 
-	url := "https://api.mangadex.org/manga/28b5d037-175d-4119-96f8-e860e408ebe9?includes[]=cover_art"
+	url := "https://api.mangadex.org/manga/" + mangaId + "?includes[]=cover_art"
 	res, err := http.Get(url)
 	if err != nil {
 		return err, result
@@ -687,7 +703,7 @@ func (g *Game) FetchManga() (error, MangadexManga) {
 func (g *Game) FetchMangaChapters() (error, MangadexMangaChapterResponse) {
 	var result MangadexMangaChapterResponse 
 
-	url := "https://api.mangadex.org/manga/28b5d037-175d-4119-96f8-e860e408ebe9/feed?translatedLanguage[]=en&limit=96&includes[]=scanlation_group&includes[]=user&order[volume]=desc&order[chapter]=desc&offset=0&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic&includeUnavailable=0"
+	url := "https://api.mangadex.org/manga/" + mangaId + "/feed?translatedLanguage[]=en&limit=96&includes[]=scanlation_group&includes[]=user&order[volume]=desc&order[chapter]=desc&offset=0&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic&includeUnavailable=0"
 	res, err := http.Get(url)
 	if err != nil {
 		return err, result
