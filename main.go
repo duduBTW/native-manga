@@ -320,6 +320,19 @@ func (g *Game) ChapterPageUpdate() {
 		}
 	}
 	
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		g.CurrentScreen = MangaScreen
+		g.CurrentPage = 0
+		g.VisualPage = 0
+		for id, img := range g.PageImages {
+			if img != nil {
+				img.Dispose()
+			}
+			delete(g.PageImages, id)
+		}
+		return
+	}	
+	
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
 		g.NextPage()
 	}
@@ -380,6 +393,31 @@ func (g *Game) MangaChapterPageUpdate() {
 		}
 	}
 }
+func (g *Game) ChapterImagesUpdate() {
+	if g.FetchImageResult == nil {
+		return
+	}
+	
+	select {
+		case res := <-g.FetchImageResult: {
+			g.PageImages[res.Id] = ebiten.NewImageFromImage(res.Image)
+
+			position := -1
+			for i, data := range g.ChapterData.Data {
+				if data == res.Id {
+					position = i
+					break
+				}
+			}
+
+			if position != -1 {		
+				g.CenterPage(g.PageImages[res.Id], position)
+			}
+		}
+		default: {}
+	}
+}
+
 func (g *Game) Update() error {
 	switch g.CurrentScreen {
 		case MangaScreen: {
@@ -387,31 +425,14 @@ func (g *Game) Update() error {
 			g.UpdateMangaAnimation()	
 		}
 		case ChapterScreen: {
-			if g.FetchImageResult != nil {
-				select {
-					case res := <-g.FetchImageResult: {
-						g.PageImages[res.Id] = ebiten.NewImageFromImage(res.Image)
-
-						position := -1
-						for i, data := range g.ChapterData.Data {
-							if data == res.Id {
-								position = i
-							}
-						}
-
-						if position != -1 {		
-							g.CenterPage(g.PageImages[res.Id], position)
-						}
-					}
-					default: {}
-				}
+			if len(g.ChapterData.Data) == 0 {
+				return nil
 			}
-
-			if len(g.ChapterData.Data) != 0 {
-				g.ChapterPaginationUpdate()
-				g.ChapterPageUpdate()
-				g.UpdateChapterAnimation()		
-			}
+			
+			g.ChapterImagesUpdate()
+			g.ChapterPaginationUpdate()
+			g.ChapterPageUpdate()
+			g.UpdateChapterAnimation()		
 		}	
 	}
 
@@ -564,6 +585,8 @@ func (g *Game) DrawMangaChapterPage(screen *ebiten.Image, chapters []MangadexMan
 					}
 					g.FetchImageResult = make(chan FetchImageResult, len(result.Chapter.Data))
 					g.PageImages = make(map[string](*ebiten.Image), len(result.Chapter.Data))
+					g.CurrentPage = 0
+					g.VisualPage = 0
 					
 					for _, chapterData := range result.Chapter.Data {
 						go func() {
