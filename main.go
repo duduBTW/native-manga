@@ -2,7 +2,6 @@ package main
 
 import (
 	"log"
-	"strings"
 	"net/http"
 	"errors"
 	"bytes"
@@ -25,6 +24,9 @@ var titleFontTTF []byte
 
 //go:embed assets/animeace2_reg.ttf
 var bodyRegularFontTTF []byte
+
+//go:embed assets/MochiyPopOne-Regular.ttf
+var bodyRegularJpFontTTF []byte
 
 type Screen int
 const (
@@ -109,7 +111,7 @@ type Game struct{
 	VisualMangaPage float64
 
 	FontTitle *text.GoTextFace
-	FontBody *text.GoTextFace
+	FontBody text.Face 
 
 	ClickableRegions []ClickableRegion
 }
@@ -376,12 +378,13 @@ func (g *Game) ChapterPageUpdate() {
 func (g *Game) MangaChapterPageUpdate() {
 	_mouseX, _mouseY := ebiten.CursorPosition()
 	mouseX, mouseY := float64(_mouseX), float64(_mouseY)
-
-	if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+	_, scrollY := ebiten.Wheel()
+	
+	if (scrollY < 0 || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight)) {
 		g.CurrentMangaPage++	
 	}
 
-	if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+	if (scrollY > 0 || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft)) && g.CurrentMangaPage > 0 {
 		g.CurrentMangaPage--
 	}
 
@@ -510,49 +513,20 @@ func (g *Game) DrawMangaCover(screen *ebiten.Image, bounds Bounds) {
 	screen.DrawImage(g.CoverArtImage, op)
 }
 
-func (g *Game) WrapText(s string, face text.Face, maxWidth float64) []string {
-	var lines []string
-
-	paragraphs := strings.Split(s, "\n") 
-
-	for _, para := range paragraphs {
-		words := strings.Fields(para)
-		if len(words) == 0 {
-			lines = append(lines, "")
-			continue
-		}
-
-		current := words[0]
-		for _, word := range words[1:] {
-			candidate := current + " " + word
-			w := text.Advance(candidate, face)
-			if w <= maxWidth {
-				current = candidate
-			} else {
-				lines = append(lines, current)
-				current = word
-			}
-		}
-		lines = append(lines, current)
-	}
-
-	return lines
-}
-
 func (g *Game) DrawMangaDetails(screen *ebiten.Image, bounds Bounds) {
 	titleOp := &text.DrawOptions{}
 	titleOp.ColorScale.ScaleWithColor(color.Black)
 	titleOp.GeoM.Translate(bounds.X, bounds.Y + bounds.H - g.FontTitle.Size)
 	text.Draw(screen, g.MangaTitle, g.FontTitle, titleOp)
 
-	lines := g.WrapText(g.MangaDescription, g.FontBody, bounds.W)
+	lines := WrapText(g.MangaDescription, g.FontBody, bounds.W)
 	
 	_, bodyHeight := text.Measure("A", g.FontBody, 0)
 	for i, line := range lines {
 		descriptionOp := &text.DrawOptions{}
 		descriptionOp.ColorScale.ScaleWithColor(color.NRGBA{ R: 0, G: 0, B: 0, A: 180 })
 		descriptionOp.GeoM.Translate(bounds.X, bounds.Y + (bodyHeight*float64(i)))
-		descriptionOp.LineSpacing = g.FontBody.Size
+		descriptionOp.LineSpacing = g.FontBody.Metrics().HLineGap
 		text.Draw(screen, line, g.FontBody, descriptionOp)
 	}
 }
@@ -779,11 +753,21 @@ func (g *Game) LoadFonts() (error) {
 	if err != nil {
 		return err
 	}
-
-	g.FontBody = &text.GoTextFace{
-		Source: bodyTextFaceSource,
-		Size: 18,
+	
+	bodyJpTextFaceSource, err := text.NewGoTextFaceSource(bytes.NewReader(bodyRegularJpFontTTF))	
+	if err != nil {
+		return err
 	}
+
+	const bodySize = 18
+	bodyFont := &text.GoTextFace{ Source: bodyTextFaceSource, Size: bodySize }
+	bodyJpFont := &text.GoTextFace{ Source: bodyJpTextFaceSource, Size: bodySize }
+	bodyMulti, err := text.NewMultiFace(bodyFont, bodyJpFont) 
+	if err != nil {
+		return err
+	}
+	
+	g.FontBody = bodyMulti 
 	return nil
 }
 
