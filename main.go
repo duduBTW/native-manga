@@ -4,7 +4,6 @@ import (
 	"log"
 	"strings"
 	"net/http"
-	"io"
 	"errors"
 	"bytes"
 	"math"
@@ -67,14 +66,37 @@ type PaginationPageHeight struct {
 	Visual float32
 }
 
+type Bounds struct {
+	X, Y, W, H float64
+}
+func (b Bounds) Contains(x, y float64) bool {
+	return x >= b.X && x <= b.X+b.W && y >= b.Y && y <= b.Y+b.H
+}
+
+type ClickableRegion struct {
+	Bounds Bounds
+	OnClick func()
+}	
+
+type FetchImageResult struct {
+	Image image.Image
+	Err error
+	Id string
+}
+
 type Game struct{
-	Images []*ebiten.Image
 	CoverArtImage *ebiten.Image
+
+	PageImages map[string](*ebiten.Image)
 	PageTransform []PageTransform
 	CurrentPage int
 	VisualPage float64 
 	PaginationPageHeight []PaginationPageHeight
-
+	IsLoadingChapter bool
+	ChapterLoadErr error
+	ChapterData MangedexChapter
+	FetchImageResult chan FetchImageResult
+	
 	ScreenHeight float64
 	ScreenWidth float64
 
@@ -88,6 +110,8 @@ type Game struct{
 
 	FontTitle *text.GoTextFace
 	FontBody *text.GoTextFace
+
+	ClickableRegions []ClickableRegion
 }
 
 func (g *Game) GetCurrentPageTransform(pageIndex int) *PageTransform {
@@ -160,7 +184,12 @@ func (g *Game) SetPageScale(value float64) {
 }
 
 func (g *Game) CenterPages() {
-	for i, img := range g.Images {
+	for i, cId := range g.ChapterData.Data {
+		img, ok := g.PageImages[cId]
+		if !ok {
+			continue
+		}
+
     	imgWidth, imgHeight := float64(img.Bounds().Dx()), float64(img.Bounds().Dy())
 		g.PageTransform[i].Scale = 1
 		if imgWidth < g.ScreenWidth {
@@ -185,7 +214,7 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeigh
 }
 
 func (g *Game) NavigateTo(target int) error {
-		if target < 0 || target + 1 > len(g.Images) {
+	if target < 0 || target + 1 > len(g.ChapterData.Data) {
 		return errors.New("Target out of bounds")
 	}
 	
@@ -201,7 +230,7 @@ func (g *Game) NextPage() {
 }
 func (g *Game) UpdateChapterAnimation() {
 	g.VisualPage += (float64(g.CurrentPage) - g.VisualPage) * 0.1
-	for i, _ := range g.Images {
+	for i, _ := range g.ChapterData.Data {
 		pageHeight := g.PaginationPageHeight[i]
 		g.PaginationPageHeight[i].Visual += (pageHeight.Current - pageHeight.Visual) * 0.12
 
@@ -219,14 +248,14 @@ func (g *Game) ChapterPaginationUpdate() {
 	mouseX, mouseY := float64(_mouseX), float64(_mouseY) 
 	
 	if mouseY < g.ScreenHeight - 80	{
-		for i, _ := range g.Images {
+		for i, _ := range g.ChapterData.Data {
 			g.PaginationPageHeight[i].Current = 0  
 		}
 		
 		return
 	} 
 
-	for i := 0; i < len(g.Images); i++ {
+	for i := 0; i < len(g.ChapterData.Data); i++ {
 		var defaultHeight float32 = 10
 		var aroundHoveredHeight float32 = defaultHeight + 10 
 		var hoveredHeight float32 = aroundHoveredHeight + 12
@@ -247,7 +276,7 @@ func (g *Game) ChapterPaginationUpdate() {
 				
 				g.PaginationPageHeight[i].Current = hoveredHeight 
 
-				isLast := len(g.Images) == i + 1 
+				isLast := len(g.ChapterData.Data) == i + 1 
 				if !isLast {
 					g.PaginationPageHeight[i + 1].Current = aroundHoveredHeight 
 					i++
@@ -328,12 +357,23 @@ func (g *Game) ChapterPageUpdate() {
 }
 
 func (g *Game) MangaChapterPageUpdate() {
+	_mouseX, _mouseY := ebiten.CursorPosition()
+	mouseX, mouseY := float64(_mouseX), float64(_mouseY)
+
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
 		g.CurrentMangaPage++	
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
 		g.CurrentMangaPage--
+	}
+
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		for _, region := range g.ClickableRegions {
+			if region.Bounds.Contains(mouseX, mouseY) {
+				region.OnClick()
+			}
+		}
 	}
 }
 func (g *Game) Update() error {
@@ -343,9 +383,20 @@ func (g *Game) Update() error {
 			g.UpdateMangaAnimation()	
 		}
 		case ChapterScreen: {
-			g.ChapterPaginationUpdate()
-			g.ChapterPageUpdate()
-			g.UpdateChapterAnimation()		
+			if g.FetchImageResult != nil {
+				select {
+					case res := <-g.FetchImageResult: {
+						g.PageImages[res.Id] = ebiten.NewImageFromImage(res.Image)
+					}
+					default: {}
+				}
+			}
+
+			if len(g.ChapterData.Data) != 0 {
+				g.ChapterPaginationUpdate()
+				g.ChapterPageUpdate()
+				g.UpdateChapterAnimation()		
+			}
 		}	
 	}
 
@@ -354,14 +405,14 @@ func (g *Game) Update() error {
 
 func (g *Game) PageSize(i int) (float32, float32) {
 	var gap float32 = 6 
-	totalItems := float32(len(g.Images))
+	totalItems := float32(len(g.ChapterData.Data))
 	size := (float32(g.ScreenWidth) - (gap * totalItems)) / totalItems
 	x := (size * float32(i)) + (gap * float32(i))
 	return size, x
 }
 
 func (g *Game) DrawPagination(screen *ebiten.Image) {
-	for i, _ := range g.Images {
+	for i, _ := range g.ChapterData.Data {
 		w, x := g.PageSize(i) 
 		h := float32(g.PaginationPageHeight[i].Visual) 
 		y := float32(g.ScreenHeight) - h 
@@ -375,7 +426,12 @@ func (g *Game) DrawPagination(screen *ebiten.Image) {
 }
 
 func (g *Game) DrawPages(screen *ebiten.Image) {
-	for i, cImage := range g.Images {
+	for i, chapterId := range g.ChapterData.Data {
+		cImage, ok := g.PageImages[chapterId]
+		if !ok {
+			continue
+		}
+
 		op := &ebiten.DrawImageOptions{}
 		translateX, translateY := g.GetPageTransformDiff(i) 
 		var scale float64 = 1
@@ -397,9 +453,6 @@ func (g *Game) DrawPages(screen *ebiten.Image) {
 	}
 }
 
-type Bounds struct {
-	X, Y, W, H float64
-}
 func (g *Game) DrawMangaCover(screen *ebiten.Image, bounds Bounds) {
 	op := &ebiten.DrawImageOptions{}
 	
@@ -472,8 +525,40 @@ func (g *Game) DrawMangaChapterPage(screen *ebiten.Image, chapters []MangadexMan
 	for i, chapter := range chapters {
 		chapterTextOp := &text.DrawOptions{}
 		chapterTextOp.ColorScale.ScaleWithColor(color.Black)
-		chapterTextOp.GeoM.Translate(bounds.X, bounds.Y + (rowHeight * float64(i)))
+		x := bounds.X
+		y := bounds.Y + (rowHeight * float64(i))
+		chapterTextOp.GeoM.Translate(x, y)
 		text.Draw(screen, chapter.Attributes.Chapter + "  " + chapter.Attributes.Title, g.FontBody, chapterTextOp)
+
+		g.ClickableRegions = append(g.ClickableRegions, ClickableRegion{
+			Bounds: Bounds{ X: x, Y: y, W: bounds.W, H: rowHeight },
+			OnClick: func() {
+				g.CurrentScreen = ChapterScreen	
+				g.IsLoadingChapter = true
+				g.ChapterLoadErr = nil
+
+				go func() {
+					result, err := FetchChapter(chapter.Id)
+					g.ChapterLoadErr = err
+					g.ChapterData = result.Chapter
+
+					g.PageTransform = make([]PageTransform, len(result.Chapter.Data))
+					g.PaginationPageHeight = make([]PaginationPageHeight, len(result.Chapter.Data))
+					for i := range g.PageTransform {
+    					g.PageTransform[i].Scale = 1.0
+					}
+					g.FetchImageResult = make(chan FetchImageResult, len(result.Chapter.Data))
+					g.PageImages = make(map[string](*ebiten.Image), len(result.Chapter.Data))
+					
+					for _, chapterData := range result.Chapter.Data {
+						go func() {
+							img, err := LoadImageFromUrl(result.BaseUrl + "/data/" + result.Chapter.Hash + "/" + chapterData)
+							g.FetchImageResult <- FetchImageResult{ Image: img, Err: err, Id: chapterData }
+						}()
+					}
+				}()
+			},
+		})
 	}
 }
 
@@ -487,6 +572,8 @@ func (g *Game) DrawMangaChapters(screen *ebiten.Image, x, y float64) {
 
 	chaptersPerPage := math.Floor(height / rowHeight) // whole rows only, not fractional
 	chapterCount := float64(len(g.MangaChapterData))
+
+	g.ClickableRegions = []ClickableRegion{}
 
 	for i := 0.0; i < math.Ceil(chapterCount / chaptersPerPage); i++ {
 		start := chaptersPerPage * i
@@ -539,71 +626,14 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			g.DrawManga(screen)
 		}
 		case ChapterScreen: {
+			if len(g.ChapterData.Data) == 0 {
+				return
+			}
+
 			g.DrawPages(screen)
 			g.DrawPagination(screen)	
 		}	
 	}
-}
-
-func LoadImageFromUrl(url string) (*ebiten.Image, error) {
-	res, err := http.Get(url)
-	if err != nil {
-		return nil, err
-	}
-
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusOK {
-		return nil, errors.New("Failed to fetch")
-	}
-	
-	data, err := io.ReadAll(res.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	img, _, err := image.Decode(bytes.NewReader(data))
-	if err != nil {
-		return nil, err
-	}
-
-	return ebiten.NewImageFromImage(img), nil
-}
-
-func (g *Game) FetchChapter() (error, MangedexChapterResult) {
-	var result MangedexChapterResult
-
-	url := "https://api.mangadex.org/at-home/server/2230afe5-c254-425a-8e78-8d31011a915e"
-	res, err := http.Get(url)
-	if err != nil {
-		return err, result
-	}
-
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusOK {
-		return errors.New("Failed to fetch"), result
-	}
-
-	err = json.NewDecoder(res.Body).Decode(&result)
-	if err != nil {
-		return err, result 
-	}
-
-	g.PageTransform = make([]PageTransform, len(result.Chapter.Data))
-	g.PaginationPageHeight = make([]PaginationPageHeight, len(result.Chapter.Data))
-	for i := range g.PageTransform {
-    	g.PageTransform[i].Scale = 1.0
-	}
-
-	for _, chapterData := range result.Chapter.Data {
-		img, _ := LoadImageFromUrl(result.BaseUrl + "/data/" + result.Chapter.Hash + "/" + chapterData)
-		g.Images = append(g.Images, img)
-	}
-	// img, _ := LoadImageFromUrl("https://uploads.mangadex.org/data/3303dd03ac8d27452cce3f2a882e94b2/2-2a5e95dfec7f15cd01f9a63835be18a22fb77a10fd2d62858c7dcbb6e6c622f9.png")
-	// game.Images = append(game.Images, img)
-
-	return nil, result 
 }
 
 func (g *Game) FetchManga() (error, MangadexManga) {
@@ -649,7 +679,7 @@ func (g *Game) FetchManga() (error, MangadexManga) {
 	}
 
 	imgCoverArt, _ := LoadImageFromUrl(baseUrl + result.Data.Id + "/" + coverArtFileName)
-	g.CoverArtImage = imgCoverArt
+	g.CoverArtImage = ebiten.NewImageFromImage(imgCoverArt)
 	
 	return err, result
 }
@@ -681,12 +711,6 @@ func (g *Game) FetchMangaChapters() (error, MangadexMangaChapterResponse) {
 
 func (g *Game) Fetch() (error) {
 	switch g.CurrentScreen {
-		case ChapterScreen: {
-			err, _ := g.FetchChapter()
-			if err != nil {
-				return err
-			}
-		}	
 		case MangaScreen: {
 			err, _ := g.FetchManga()
 			if err != nil {

@@ -47,7 +47,7 @@ type MangadexMangaChapterResponse struct {
 }
 
 type MangadexMangaChapterData struct {
-	ID         string                    `json:"id"`
+	Id         string                    `json:"id"`
 	Type       string                    `json:"type"`
 	Attributes MangadexMangaChapterAttributes `json:"attributes"`
 }
@@ -69,4 +69,5 @@ type MangedexChapterResult struct {
 	BaseUrl string `json:"baseUrl"`
 	Chapter MangedexChapter
 }
+
 
