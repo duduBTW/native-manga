@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	_ "embed"
-	"encoding/json"
 	"errors"
 	"image"
 	"image/color"
@@ -11,7 +10,6 @@ import (
 	_ "image/png"
 	"log"
 	"math"
-	"net/http"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -195,6 +193,7 @@ func (g *Game) SetPageScale(value float64) {
 func (g *Game) CenterPage(img *ebiten.Image, position int) {
 	imgWidth, imgHeight := float64(img.Bounds().Dx()), float64(img.Bounds().Dy())
 	g.PageTransform[position].Scale = 1
+
 	if imgWidth < g.ScreenWidth {
 		g.SetPageTransform(Last, (g.ScreenWidth-imgWidth)/2, 0, position)
 	}
@@ -696,95 +695,41 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 }
 
-var mangaId string = "28b5d037-175d-4119-96f8-e860e408ebe9"
-
-func (g *Game) FetchManga() (error, MangadexManga) {
-	var result MangadexManga
-
-	url := "https://api.mangadex.org/manga/" + mangaId + "?includes[]=cover_art"
-	res, err := http.Get(url)
+func (g *Game) Fetch() error {
+	mangaId := "28b5d037-175d-4119-96f8-e860e408ebe9"
+	mangaResult, err := FetchManga(mangaId)
 	if err != nil {
-		return err, result
+		return err
 	}
 
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusOK {
-		return errors.New("Failed to fetch"), result
-	}
-
-	err = json.NewDecoder(res.Body).Decode(&result)
-	if err != nil {
-		return err, result
-	}
-
-	for _, title := range result.Data.Attributes.Title {
+	for _, title := range mangaResult.Data.Attributes.Title {
 		g.MangaTitle = title
 		break
 	}
 
-	for _, description := range result.Data.Attributes.Description {
+	for _, description := range mangaResult.Data.Attributes.Description {
 		g.MangaDescription = description
 		break
 	}
 
-	baseUrl := "https://mangadex.org/covers/"
-	coverArtFileName := ""
-	for _, relationship := range result.Data.Relationships {
-		switch relationship.Type {
-		case "cover_art":
-			coverArtFileName = relationship.Attributes.FileName
-		}
-	}
-	if coverArtFileName == "" {
-		return errors.New("Cover art not found"), result
+	imageCoverArtUrl, err := mangaResult.CoverArtImageUrl()
+	if err != nil {
+		return err
 	}
 
-	imgCoverArt, _ := LoadImageFromUrl(baseUrl + result.Data.Id + "/" + coverArtFileName)
+	imgCoverArt, err := LoadImageFromUrl(imageCoverArtUrl)
+	if err != nil {
+		return err
+	}
+
 	g.CoverArtImage = ebiten.NewImageFromImage(imgCoverArt)
 
-	return err, result
-}
-
-func (g *Game) FetchMangaChapters() (error, MangadexMangaChapterResponse) {
-	var result MangadexMangaChapterResponse
-
-	url := "https://api.mangadex.org/manga/" + mangaId + "/feed?translatedLanguage[]=en&limit=96&includes[]=scanlation_group&includes[]=user&order[volume]=desc&order[chapter]=desc&offset=0&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic&includeUnavailable=0"
-	res, err := http.Get(url)
+	mangaChaptersResult, err := FetchMangaChapters(mangaId)
 	if err != nil {
-		return err, result
+		return err
 	}
 
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusOK {
-		return errors.New("Failed to fetch"), result
-	}
-
-	err = json.NewDecoder(res.Body).Decode(&result)
-	if err != nil {
-		return err, result
-	}
-
-	g.MangaChapterData = result.Data
-
-	return nil, result
-}
-
-func (g *Game) Fetch() error {
-	switch g.CurrentScreen {
-	case MangaScreen:
-		{
-			err, _ := g.FetchManga()
-			if err != nil {
-				return err
-			}
-
-			err, _ = g.FetchMangaChapters()
-			return err
-		}
-	}
-
+	g.MangaChapterData = mangaChaptersResult.Data
 	return nil
 }
 
@@ -835,7 +780,7 @@ func main() {
 	}
 
 	ebiten.SetWindowSize(800, 1200)
-	ebiten.SetWindowTitle("Hello, World!")
+	ebiten.SetWindowTitle("Manga")
 	ebiten.SetWindowResizable(true)
 	if err := ebiten.RunGame(&g); err != nil {
 		log.Fatal(err)

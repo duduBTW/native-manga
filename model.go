@@ -1,29 +1,48 @@
 package main
 
+import "errors"
+
 // Manga
 type MangadexManga struct {
-	Result   string        `json:"result"`
-	Response string        `json:"response"`
+	Result   string            `json:"result"`
+	Response string            `json:"response"`
 	Data     MangadexMangaData `json:"data"`
 }
 
+func (m *MangadexManga) CoverArtImageUrl() (string, error) {
+	baseUrl := "https://mangadex.org/covers/"
+	coverArtFileName := ""
+	for _, relationship := range m.Data.Relationships {
+		switch relationship.Type {
+		case "cover_art":
+			coverArtFileName = relationship.Attributes.FileName
+		}
+	}
+
+	if coverArtFileName == "" {
+		return "", errors.New("Cover art not found")
+	}
+
+	return baseUrl + m.Data.Id + "/" + coverArtFileName, nil
+}
+
 type MangadexMangaData struct {
-	Id            string                          `json:"id"`
-	Type          string                          `json:"type"`
-	Attributes    MangadexMangaAttributes         `json:"attributes"`
-	Relationships []MangadexMangaRelationship     `json:"relationships"`
+	Id            string                      `json:"id"`
+	Type          string                      `json:"type"`
+	Attributes    MangadexMangaAttributes     `json:"attributes"`
+	Relationships []MangadexMangaRelationship `json:"relationships"`
 }
 
 type MangadexMangaAttributes struct {
-	Title map[string]string `json:"title"`
+	Title       map[string]string `json:"title"`
 	Description map[string]string `json:"description"`
 }
 
 type MangadexMangaRelationship struct {
-	Id         string                        `json:"id"`
-	Type       string                        `json:"type"`
-	Related    string                        `json:"related,omitempty"`
-	Attributes *MangadexCoverArtAttributes   `json:"attributes,omitempty"`
+	Id         string                      `json:"id"`
+	Type       string                      `json:"type"`
+	Related    string                      `json:"related,omitempty"`
+	Attributes *MangadexCoverArtAttributes `json:"attributes,omitempty"`
 }
 
 type MangadexCoverArtAttributes struct {
@@ -38,17 +57,17 @@ type MangadexCoverArtAttributes struct {
 
 // Manga Chapter
 type MangadexMangaChapterResponse struct {
-	Result   string            `json:"result"`
-	Response string            `json:"response"`
+	Result   string                     `json:"result"`
+	Response string                     `json:"response"`
 	Data     []MangadexMangaChapterData `json:"data"`
-	Limit    int               `json:"limit"`
-	Offset   int               `json:"offset"`
-	Total    int               `json:"total"`
+	Limit    int                        `json:"limit"`
+	Offset   int                        `json:"offset"`
+	Total    int                        `json:"total"`
 }
 
 type MangadexMangaChapterData struct {
-	Id         string                    `json:"id"`
-	Type       string                    `json:"type"`
+	Id         string                         `json:"id"`
+	Type       string                         `json:"type"`
 	Attributes MangadexMangaChapterAttributes `json:"attributes"`
 }
 
@@ -60,14 +79,12 @@ type MangadexMangaChapterAttributes struct {
 
 // Chapter
 type MangedexChapter struct {
-	Hash string `json:"hash"`
-	Data []string `json:"data"`
+	Hash      string   `json:"hash"`
+	Data      []string `json:"data"`
 	DataSaver []string `json:"dataSaver"`
 }
 type MangedexChapterResult struct {
-	Result string `json:"result"`
+	Result  string `json:"result"`
 	BaseUrl string `json:"baseUrl"`
 	Chapter MangedexChapter
 }
-
-
