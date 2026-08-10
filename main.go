@@ -197,7 +197,9 @@ func (g *Game) CenterPage(img *ebiten.Image, position int) {
 	g.PageTransform[position].Scale = 1
 	if imgWidth < g.ScreenWidth {
 		g.SetPageTransform(Last, (g.ScreenWidth-imgWidth)/2, 0, position)
-	} else {
+	}
+
+	if imgHeight < g.ScreenHeight {
 		scale := g.ScreenWidth / imgWidth
 		g.SetPageTransform(Last, 0, (g.ScreenHeight-imgHeight*scale)/2, position)
 	}
@@ -305,7 +307,7 @@ func (g *Game) ChapterPaginationUpdate() {
 func (g *Game) ChapterPageUpdate() {
 	_mouseX, _mouseY := ebiten.CursorPosition()
 	mouseX, mouseY := float64(_mouseX), float64(_mouseY)
-	_, scrollY := ebiten.Wheel()
+	scrollX, scrollY := ebiten.Wheel()
 
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		g.SetPageTransform(Initial, mouseX, mouseY, CurrentPage)
@@ -369,19 +371,20 @@ func (g *Game) ChapterPageUpdate() {
 			g.SetPageScale(newScale)
 		}
 	} else {
-		var multiplier float64 = 72
+		var multiplier float64 = 42
 		var keyboardMultiplier float64 = 32
-		// lastX, lastY := g.GetPageTransform(Last, CurrentPage)
 		lastY := g.PageTransform[g.CurrentPage].Y.Last.Real
-		// g.PageTransform[g.CurrentPage].X.Last.Real = lastX + (scrollX * multiplier)
+		lastX := g.PageTransform[g.CurrentPage].X.Last.Real
 
 		yScrollAmount := lastY + (scrollY * multiplier)
+		xScrollAmount := lastX + (scrollX * multiplier)
 		if ebiten.IsKeyPressed(ebiten.KeyArrowDown) {
 			yScrollAmount -= keyboardMultiplier
 		} else if ebiten.IsKeyPressed(ebiten.KeyArrowUp) {
 			yScrollAmount += keyboardMultiplier
 		}
 		g.PageTransform[g.CurrentPage].Y.Last.Real = yScrollAmount
+		g.PageTransform[g.CurrentPage].X.Last.Real = xScrollAmount
 	}
 }
 
@@ -471,12 +474,12 @@ func (g *Game) DrawPagination(screen *ebiten.Image) {
 		w, x := g.PageSize(i)
 		h := float32(g.PaginationPageHeight[i].Visual)
 		y := float32(g.ScreenHeight) - h
-		vector.FillRect(screen, x, y, w, h, color.NRGBA{R: 255, G: 255, B: 255, A: 100}, true)
+		vector.FillRect(screen, x, y, w, h, color.NRGBA{R: 255, G: 255, B: 255, A: 50}, true)
 		if i <= g.CurrentPage {
 			vector.FillRect(screen, x, y, w, h, color.White, true)
 		}
 
-		vector.StrokeRect(screen, x-2, y-2, w+2, h+2, 2, color.Black, true)
+		vector.StrokeRect(screen, x, y+1, w, h, 1, color.Black, true)
 	}
 }
 
