@@ -193,20 +193,22 @@ func (g *Game) SetPageScale(value float64) {
 func (g *Game) CenterPage(img *ebiten.Image, position int) {
 	imgWidth, imgHeight := float64(img.Bounds().Dx()), float64(img.Bounds().Dy())
 	g.PageTransform[position].Scale = 1
+	g.SetPageTransform(Last, 0, 0, position)
 
 	if imgWidth < g.ScreenWidth {
 		g.SetPageTransform(Last, (g.ScreenWidth-imgWidth)/2, 0, position)
 	}
 
-	if imgHeight < g.ScreenHeight {
-		scale := g.ScreenWidth / imgWidth
-		g.SetPageTransform(Last, 0, (g.ScreenHeight-imgHeight*scale)/2, position)
+	scale := g.ScreenWidth / imgWidth
+	scaledImageHeight := imgHeight * scale
+	if scaledImageHeight < g.ScreenHeight {
+		g.SetPageTransform(Last, 0, (g.ScreenHeight-scaledImageHeight)/2, position)
 	}
 }
 
 func (g *Game) CenterPages() {
-	for i, cId := range g.ChapterData.Data {
-		img, ok := g.PageImages[cId]
+	for i, cID := range g.ChapterData.Data {
+		img, ok := g.PageImages[cID]
 		if !ok {
 			continue
 		}
@@ -274,15 +276,15 @@ func (g *Game) ChapterPaginationUpdate() {
 
 	for i := 0; i < len(g.ChapterData.Data); i++ {
 		var defaultHeight float32 = 10
-		var aroundHoveredHeight float32 = defaultHeight + 10
-		var hoveredHeight float32 = aroundHoveredHeight + 12
+		aroundHoveredHeight := defaultHeight + 10
+		hoveredHeight := aroundHoveredHeight + 12
 
 		g.PaginationPageHeight[i].Current = defaultHeight
 		if mouseY > g.ScreenHeight-float64(hoveredHeight) {
 			size, x := g.PageSize(i)
 
 			if mouseX > float64(x) && mouseX < float64(x+size) {
-				if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) {
+				if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 					g.NavigateTo(i)
 				}
 
@@ -323,7 +325,7 @@ func (g *Game) ChapterPageUpdate() {
 			g.SetPageTransform(Last, lastX, lastY, CurrentPage)
 			g.SetPageTransform(Current, 0, 0, CurrentPage)
 			g.SetPageTransform(Initial, 0, 0, CurrentPage)
-		} else {
+		} else if mouseY < g.ScreenHeight-32 {
 			center := g.ScreenWidth / 2
 			if mouseX < center {
 				g.PreviousPage()
@@ -462,9 +464,9 @@ func (g *Game) Update() error {
 
 func (g *Game) PageSize(i int) (float32, float32) {
 	var gap float32 = 6
-	totalItems := float32(len(g.ChapterData.Data))
+	totalItems := float32(g.ChapterCount())
 	size := (float32(g.ScreenWidth) - (gap * totalItems)) / totalItems
-	x := (size * float32(i)) + (gap * float32(i))
+	x := (size * float32(i)) + (gap * float32(i)) + 2
 	return size, x
 }
 
@@ -473,9 +475,9 @@ func (g *Game) DrawPagination(screen *ebiten.Image) {
 		w, x := g.PageSize(i)
 		h := float32(g.PaginationPageHeight[i].Visual)
 		y := float32(g.ScreenHeight) - h
-		vector.FillRect(screen, x, y, w, h, color.NRGBA{R: 255, G: 255, B: 255, A: 50}, true)
+		vector.FillRect(screen, x, y, w, h, color.NRGBA{R: 255, G: 255, B: 255, A: 100}, true)
 		if i <= g.CurrentPage {
-			vector.FillRect(screen, x, y, w, h, color.White, true)
+			vector.FillRect(screen, x, y, w, h, color.NRGBA{R: 185, G: 217, B: 230, A: 255}, true)
 		}
 
 		vector.StrokeRect(screen, x, y+1, w, h, 1, color.Black, true)
