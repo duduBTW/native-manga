@@ -21,13 +21,23 @@ type GameManga struct {
 	MangaVisualPage  float64
 }
 
+func (g *GameManga) Clean() {
+	g.MangaCurrentPage = 0
+	g.MangaVisualPage = 0
+	g.MangaTitle = ""
+	g.MangaDescription = ""
+	g.MangaChapterData = nil
+	g.MangaCoverArtImage.Deallocate()
+	g.MangaCoverArtImage = nil
+}
+
 const mangaChapterPagePadding float64 = 80
 
 func (g *Game) UpdateMangaAnimation() {
 	g.MangaVisualPage += (float64(g.MangaCurrentPage) - g.MangaVisualPage) * 0.1
 }
 
-func (g *Game) MangaChapterPageUpdate() {
+func (g *Game) MangaUpdate() {
 	_, scrollY := ebiten.Wheel()
 
 	if (scrollY < 0 || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight)) && g.MangaCurrentPage < int(g.MangaChapterPageCount()+1) {
@@ -36,6 +46,12 @@ func (g *Game) MangaChapterPageUpdate() {
 
 	if (scrollY > 0 || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft)) && g.MangaCurrentPage > 0 {
 		g.MangaCurrentPage--
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		g.CurrentScreen = BrowseScreen
+		g.GameManga.Clean()
+		return
 	}
 }
 

@@ -77,7 +77,7 @@ func (g *Game) Update() error {
 	case MangaScreen:
 		{
 			g.MangaCoverUpdate()
-			g.MangaChapterPageUpdate()
+			g.MangaUpdate()
 			g.UpdateMangaAnimation()
 		}
 	case ChapterScreen:

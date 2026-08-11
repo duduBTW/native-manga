@@ -66,6 +66,18 @@ type GameChapter struct {
 	FetchImageResult     chan FetchImageResult
 }
 
+func (g *GameChapter) Clean() {
+	g.CurrentPage = 0
+	g.VisualPage = 0
+	g.ChapterData = MangedexChapter{}
+	for id, img := range g.PageImages {
+		if img != nil {
+			img.Deallocate()
+		}
+		delete(g.PageImages, id)
+	}
+}
+
 func (g *Game) ChapterGetCurrentPageTransform(pageIndex int) *ChapterPageTransform {
 	if pageIndex == CurrentPage {
 		pageIndex = g.CurrentPage
@@ -236,14 +248,7 @@ func (g *Game) ChapterPageUpdate() {
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		g.CurrentScreen = MangaScreen
-		g.CurrentPage = 0
-		g.VisualPage = 0
-		for id, img := range g.PageImages {
-			if img != nil {
-				img.Dispose()
-			}
-			delete(g.PageImages, id)
-		}
+		g.GameChapter.Clean()
 		return
 	}
 
@@ -332,7 +337,7 @@ func (g *Game) DrawChapterPagination(screen *ebiten.Image) {
 		w, x := g.ChapterPageItemWidth(i)
 		h := float32(g.PaginationPageHeight[i].Visual)
 		y := float32(g.ScreenHeight) - h
-		vector.FillRect(screen, x, y, w, h, color.NRGBA{R: 255, G: 255, B: 255, A: 100}, true)
+		vector.FillRect(screen, x, y, w, h, color.NRGBA{R: 255, G: 255, B: 255, A: 155}, true)
 		if i <= g.CurrentPage {
 			vector.FillRect(screen, x, y, w, h, color.NRGBA{R: 185, G: 217, B: 230, A: 255}, true)
 		}
