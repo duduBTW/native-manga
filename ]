@@ -337,11 +337,11 @@ func (g *Game) DrawChapterPagination(screen *ebiten.Image) {
 			vector.FillRect(screen, x, y, w, h, color.NRGBA{R: 185, G: 217, B: 230, A: 255}, true)
 		}
 
-		pageNumber := strconv.Itoa(i + 1)
+		pageNumber := strconv.Itoa(i+1)
 		textW, textH := text.Measure(pageNumber, g.FontBodySM, 0)
-		if float64(h) > textH+8 && textW < float64(w) {
+		if float64(h) > textH+10 {
 			op := &text.DrawOptions{}
-			op.GeoM.Translate(float64(x+((w-float32(textW))/2)), float64(y)+5)
+			op.GeoM.Translate(float64(x + (w - (float32(textW)) / 2), float64(y)+2)
 			op.ColorScale.ScaleWithColor(color.Black)
 
 			text.Draw(screen, pageNumber, g.FontBodySM, op)

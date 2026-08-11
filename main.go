@@ -52,8 +52,9 @@ type Game struct {
 	GameManga
 	GameChapter
 
-	FontTitle *text.GoTextFace
-	FontBody  text.Face
+	FontTitle  *text.GoTextFace
+	FontBody   text.Face
+	FontBodySM *text.GoTextFace
 
 	ClickableRegions []ClickableRegion
 }
@@ -223,6 +224,10 @@ func (g *Game) LoadFonts() error {
 	}
 
 	g.FontBody = bodyMulti
+	g.FontBodySM = &text.GoTextFace{
+		Source: bodyTextFaceSource,
+		Size:   12,
+	}
 	return nil
 }
 
