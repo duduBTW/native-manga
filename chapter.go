@@ -344,6 +344,8 @@ func (g *Game) DrawChapterPages(screen *ebiten.Image) {
 		}
 
 		op := &ebiten.DrawImageOptions{}
+		op.Filter = ebiten.FilterLinear
+
 		translateX, translateY := g.ChapterGetPageTransformDiff(i)
 		var scale float64 = 1
 

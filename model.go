@@ -2,6 +2,16 @@ package main
 
 import "errors"
 
+// Browse
+type MangadexMangaCollection struct {
+	Result   string              `json:"result"`
+	Response string              `json:"response"`
+	Data     []MangadexMangaData `json:"data"`
+	Limit    int                 `json:"limit"`
+	Offset   int                 `json:"offset"`
+	Total    int                 `json:"total"`
+}
+
 // Manga
 type MangadexManga struct {
 	Result   string            `json:"result"`
@@ -10,20 +20,7 @@ type MangadexManga struct {
 }
 
 func (m *MangadexManga) CoverArtImageUrl() (string, error) {
-	baseUrl := "https://mangadex.org/covers/"
-	coverArtFileName := ""
-	for _, relationship := range m.Data.Relationships {
-		switch relationship.Type {
-		case "cover_art":
-			coverArtFileName = relationship.Attributes.FileName
-		}
-	}
-
-	if coverArtFileName == "" {
-		return "", errors.New("Cover art not found")
-	}
-
-	return baseUrl + m.Data.Id + "/" + coverArtFileName, nil
+	return m.Data.CoverArtImageUrl()
 }
 
 type MangadexMangaData struct {
@@ -31,6 +28,20 @@ type MangadexMangaData struct {
 	Type          string                      `json:"type"`
 	Attributes    MangadexMangaAttributes     `json:"attributes"`
 	Relationships []MangadexMangaRelationship `json:"relationships"`
+}
+
+func (d *MangadexMangaData) CoverArtImageUrl() (string, error) {
+	baseUrl := "https://mangadex.org/covers/"
+	coverArtFileName := ""
+	for _, relationship := range d.Relationships {
+		if relationship.Type == "cover_art" && relationship.Attributes != nil {
+			coverArtFileName = relationship.Attributes.FileName
+		}
+	}
+	if coverArtFileName == "" {
+		return "", errors.New("Cover art not found")
+	}
+	return baseUrl + d.Id + "/" + coverArtFileName, nil
 }
 
 type MangadexMangaAttributes struct {

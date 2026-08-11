@@ -11,10 +11,11 @@ import (
 )
 
 type GameManga struct {
-	MangaCoverArtImage *ebiten.Image
-	MangaTitle         string
-	MangaDescription   string
-	MangaChapterData   []MangadexMangaChapterData
+	MangaCoverArtImage            *ebiten.Image
+	MangaCoverArtFetchImageResult chan FetchImageResult
+	MangaTitle                    string
+	MangaDescription              string
+	MangaChapterData              []MangadexMangaChapterData
 
 	MangaCurrentPage int
 	MangaVisualPage  float64
@@ -27,8 +28,6 @@ func (g *Game) UpdateMangaAnimation() {
 }
 
 func (g *Game) MangaChapterPageUpdate() {
-	_mouseX, _mouseY := ebiten.CursorPosition()
-	mouseX, mouseY := float64(_mouseX), float64(_mouseY)
 	_, scrollY := ebiten.Wheel()
 
 	if (scrollY < 0 || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight)) && g.MangaCurrentPage < int(g.MangaChapterPageCount()+1) {
@@ -38,12 +37,20 @@ func (g *Game) MangaChapterPageUpdate() {
 	if (scrollY > 0 || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft)) && g.MangaCurrentPage > 0 {
 		g.MangaCurrentPage--
 	}
+}
 
-	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-		for _, region := range g.ClickableRegions {
-			if region.Bounds.Contains(mouseX, mouseY) {
-				region.OnClick()
-			}
+func (g *Game) MangaCoverUpdate() {
+	if g.MangaCoverArtFetchImageResult == nil {
+		return
+	}
+
+	select {
+	case res := <-g.MangaCoverArtFetchImageResult:
+		{
+			g.MangaCoverArtImage = ebiten.NewImageFromImage(res.Image)
+		}
+	default:
+		{
 		}
 	}
 }
@@ -71,7 +78,12 @@ func (g *Game) MangaChapterPageCount() float64 {
 }
 
 func (g *Game) DrawMangaCover(screen *ebiten.Image, bounds Bounds) {
+	if g.MangaCoverArtImage == nil {
+		return
+	}
+
 	op := &ebiten.DrawImageOptions{}
+	op.Filter = ebiten.FilterLinear
 
 	imageOriginalWidth, imageOriginalHeight := float64(g.MangaCoverArtImage.Bounds().Dx()), float64(g.MangaCoverArtImage.Bounds().Dy())
 	var scale float64 = 1
@@ -128,7 +140,7 @@ func (g *Game) MangaHandleChapterClick(chapter MangadexMangaChapterData) {
 		g.PageImages = make(map[string](*ebiten.Image), len(result.Chapter.Data))
 		g.CurrentPage = 0
 		g.VisualPage = 0
-	
+
 		for _, chapterData := range result.Chapter.Data {
 			go func() {
 				pageURL := result.BaseUrl + "/data/" + result.Chapter.Hash + "/" + chapterData
@@ -160,7 +172,6 @@ func (g *Game) DrawMangaChapterPage(screen *ebiten.Image, chapters []MangadexMan
 
 func (g *Game) DrawMangaChapters(screen *ebiten.Image, x, y float64) {
 	padding := mangaChapterPagePadding
-	g.ClickableRegions = []ClickableRegion{}
 
 	for i := 0.0; i < g.MangaChapterPageCount(); i++ {
 		start := g.MangaChapterPerPage() * i
@@ -186,7 +197,7 @@ func (g *Game) IsMangaFullWidth() bool {
 }
 
 func (g *Game) DrawManga(screen *ebiten.Image) {
-	vector.FillRect(screen, 0, 0, float32(g.ScreenWidth), float32(g.ScreenHeight), color.NRGBA{R: 255, G: 255, B: 255, A: 255}, true)
+	vector.FillRect(screen, 0, 0, float32(g.ScreenWidth), float32(g.ScreenHeight), color.White, true)
 
 	halfScreen := g.ScreenWidth / 2
 	width := 0.0

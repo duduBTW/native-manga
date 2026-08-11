@@ -8,6 +8,7 @@ import (
 	"log"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
 
@@ -25,6 +26,7 @@ type Screen int
 const (
 	MangaScreen Screen = iota
 	ChapterScreen
+	BrowseScreen
 )
 
 type ClickableRegion struct {
@@ -46,6 +48,7 @@ type Game struct {
 
 	CurrentScreen Screen
 
+	GameBrowse
 	GameManga
 	GameChapter
 
@@ -72,6 +75,7 @@ func (g *Game) Update() error {
 	switch g.CurrentScreen {
 	case MangaScreen:
 		{
+			g.MangaCoverUpdate()
 			g.MangaChapterPageUpdate()
 			g.UpdateMangaAnimation()
 		}
@@ -88,11 +92,27 @@ func (g *Game) Update() error {
 		}
 	}
 
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		_mouseX, _mouseY := ebiten.CursorPosition()
+		mouseX, mouseY := float64(_mouseX), float64(_mouseY)
+		for _, region := range g.ClickableRegions {
+			if region.Bounds.Contains(mouseX, mouseY) {
+				region.OnClick()
+			}
+		}
+	}
+
 	return nil
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
+	g.ClickableRegions = []ClickableRegion{}
+
 	switch g.CurrentScreen {
+	case BrowseScreen:
+		{
+			g.DrawBrowse(screen)
+		}
 	case MangaScreen:
 		{
 			g.DrawManga(screen)
@@ -110,8 +130,34 @@ func (g *Game) Draw(screen *ebiten.Image) {
 }
 
 func (g *Game) Fetch() error {
-	mangaId := "28b5d037-175d-4119-96f8-e860e408ebe9"
-	mangaResult, err := FetchManga(mangaId)
+	result, err := FetchPopularNewTitles()
+	if err != nil {
+		return err
+	}
+
+	g.BrowseData = result.Data
+	g.BrowseMangaImages = make(map[string](*ebiten.Image), len(g.BrowseData))
+
+	for _, manga := range g.BrowseData {
+		imageCoverArtURL, err := manga.CoverArtImageUrl()
+		if err != nil {
+			return err
+		}
+
+		imgCoverArt, err := LoadImageFromUrl(imageCoverArtURL + ".512.jpg")
+		if err != nil {
+			return err
+		}
+
+		g.BrowseMangaImages[manga.Id] = ebiten.NewImageFromImage(imgCoverArt)
+	}
+
+	return nil
+}
+
+func (g *Game) Fetch2() error {
+	mangaID := "28b5d037-175d-4119-96f8-e860e408ebe9"
+	mangaResult, err := FetchManga(mangaID)
 	if err != nil {
 		return err
 	}
@@ -126,19 +172,19 @@ func (g *Game) Fetch() error {
 		break
 	}
 
-	imageCoverArtUrl, err := mangaResult.CoverArtImageUrl()
+	imageCoverArtURL, err := mangaResult.CoverArtImageUrl()
 	if err != nil {
 		return err
 	}
 
-	imgCoverArt, err := LoadImageFromUrl(imageCoverArtUrl)
+	imgCoverArt, err := LoadImageFromUrl(imageCoverArtURL)
 	if err != nil {
 		return err
 	}
 
 	g.MangaCoverArtImage = ebiten.NewImageFromImage(imgCoverArt)
 
-	mangaChaptersResult, err := FetchMangaChapters(mangaId)
+	mangaChaptersResult, err := FetchMangaChapters(mangaID)
 	if err != nil {
 		return err
 	}
@@ -182,7 +228,7 @@ func (g *Game) LoadFonts() error {
 
 func main() {
 	g := Game{
-		CurrentScreen: MangaScreen,
+		CurrentScreen: BrowseScreen,
 	}
 
 	if err := g.LoadFonts(); err != nil {

@@ -93,3 +93,22 @@ func FetchManga(mangaId string) (MangadexManga, error) {
 	err = json.NewDecoder(res.Body).Decode(&result)
 	return result, err
 }
+
+func FetchPopularNewTitles() (MangadexMangaCollection, error) {
+	var result MangadexMangaCollection
+	
+	url := "https://api.mangadex.org/manga?includes[]=cover_art&includes[]=artist&includes[]=author&order[followedCount]=desc&contentRating[]=safe&contentRating[]=suggestive&hasAvailableChapters=true&createdAtSince=2026-07-11T03%3A00%3A00"
+	res, err := http.Get(url)
+	if err != nil {
+		return result, err
+	}
+
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return result, errors.New("Failed to fetch")
+	}
+
+	err = json.NewDecoder(res.Body).Decode(&result)
+	return result, err
+}
