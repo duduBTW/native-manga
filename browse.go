@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"image"
 	"image/color"
@@ -18,10 +19,13 @@ type GameBrowse struct {
 
 func (g *Game) BrowseHandleMangarClick(manga MangadexMangaData) {
 	g.CurrentScreen = MangaScreen
+	ctx, cancel := context.WithCancel(context.Background())
+	g.MangaFetchCancel = cancel
 
 	go func() {
-		mangaResult, err := FetchManga(manga.Id)
+		mangaResult, err := FetchManga(manga.Id, ctx)
 		if err != nil {
+			fmt.Println(err)
 			return
 		}
 		for _, title := range mangaResult.Data.Attributes.Title {
@@ -40,7 +44,7 @@ func (g *Game) BrowseHandleMangarClick(manga MangadexMangaData) {
 			return
 		}
 
-		imgCoverArt, err := LoadImageFromUrl(imageCoverArtURL)
+		imgCoverArt, err := LoadImageFromUrl(imageCoverArtURL, ctx)
 		if err != nil {
 			fmt.Println(err)
 			return
@@ -55,7 +59,7 @@ func (g *Game) BrowseHandleMangarClick(manga MangadexMangaData) {
 	}()
 
 	go func() {
-		mangaChaptersResult, err := FetchMangaChapters(manga.Id)
+		mangaChaptersResult, err := FetchMangaChapters(manga.Id, ctx)
 		if err != nil {
 			return
 		}

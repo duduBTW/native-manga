@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"image"
 	"image/color"
@@ -64,6 +65,7 @@ type GameChapter struct {
 	ChapterLoadErr       error
 	ChapterData          MangedexChapter
 	FetchImageResult     chan FetchImageResult
+	FetchImageCancel     context.CancelFunc
 }
 
 func (g *GameChapter) Clean() {
@@ -216,6 +218,15 @@ func (g *Game) ChapterPaginationUpdate() {
 	}
 }
 
+func (g *Game) ChapterUpdate() {
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		g.CurrentScreen = MangaScreen
+		g.FetchImageCancel()
+		g.GameChapter.Clean()
+		return
+	}
+}
+
 func (g *Game) ChapterPageUpdate() {
 	_mouseX, _mouseY := ebiten.CursorPosition()
 	mouseX, mouseY := float64(_mouseX), float64(_mouseY)
@@ -244,12 +255,6 @@ func (g *Game) ChapterPageUpdate() {
 				g.ChapterNextPage()
 			}
 		}
-	}
-
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-		g.CurrentScreen = MangaScreen
-		g.GameChapter.Clean()
-		return
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {

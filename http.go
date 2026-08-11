@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"image"
@@ -9,8 +10,13 @@ import (
 	"net/http"
 )
 
-func LoadImageFromUrl(url string) (image.Image, error) {
-	res, err := http.Get(url)
+func LoadImageFromUrl(url string, ctx context.Context) (image.Image, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -34,11 +40,16 @@ func LoadImageFromUrl(url string) (image.Image, error) {
 	return img, err
 }
 
-func FetchChapter(chapterId string) (MangedexChapterResult, error) {
+func FetchChapter(chapterID string, ctx context.Context) (MangedexChapterResult, error) {
 	var result MangedexChapterResult
 
-	url := "https://api.mangadex.org/at-home/server/" + chapterId
-	res, err := http.Get(url)
+	url := "https://api.mangadex.org/at-home/server/" + chapterID
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return result, err
+	}
+
+	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return result, err
 	}
@@ -53,10 +64,16 @@ func FetchChapter(chapterId string) (MangedexChapterResult, error) {
 	return result, err
 }
 
-func FetchMangaChapters(mangaId string) (MangadexMangaChapterResponse, error) {
+func FetchMangaChapters(mangaID string, ctx context.Context) (MangadexMangaChapterResponse, error) {
 	var result MangadexMangaChapterResponse
-	url := "https://api.mangadex.org/manga/" + mangaId + "/feed?translatedLanguage[]=en&limit=96&includes[]=scanlation_group&includes[]=user&order[volume]=desc&order[chapter]=desc&offset=0&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic&includeUnavailable=0"
-	res, err := http.Get(url)
+	url := "https://api.mangadex.org/manga/" + mangaID + "/feed?translatedLanguage[]=en&limit=96&includes[]=scanlation_group&includes[]=user&order[volume]=desc&order[chapter]=desc&offset=0&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic&includeUnavailable=0"
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return result, err
+	}
+
+	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return result, err
 	}
@@ -75,11 +92,17 @@ func FetchMangaChapters(mangaId string) (MangadexMangaChapterResponse, error) {
 	return result, nil
 }
 
-func FetchManga(mangaId string) (MangadexManga, error) {
+func FetchManga(mangaID string, ctx context.Context) (MangadexManga, error) {
 	var result MangadexManga
 
-	url := "https://api.mangadex.org/manga/" + mangaId + "?includes[]=cover_art"
-	res, err := http.Get(url)
+	url := "https://api.mangadex.org/manga/" + mangaID + "?includes[]=cover_art"
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return result, err
+	}
+
+	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return result, err
 	}
@@ -96,7 +119,7 @@ func FetchManga(mangaId string) (MangadexManga, error) {
 
 func FetchPopularNewTitles() (MangadexMangaCollection, error) {
 	var result MangadexMangaCollection
-	
+
 	url := "https://api.mangadex.org/manga?includes[]=cover_art&includes[]=artist&includes[]=author&order[followedCount]=desc&contentRating[]=safe&contentRating[]=suggestive&hasAvailableChapters=true&createdAtSince=2026-07-11T03%3A00%3A00"
 	res, err := http.Get(url)
 	if err != nil {

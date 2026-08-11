@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"image/color"
 	"math"
 
@@ -16,6 +18,7 @@ type GameManga struct {
 	MangaTitle                    string
 	MangaDescription              string
 	MangaChapterData              []MangadexMangaChapterData
+	MangaFetchCancel              context.CancelFunc
 
 	MangaCurrentPage int
 	MangaVisualPage  float64
@@ -27,7 +30,10 @@ func (g *GameManga) Clean() {
 	g.MangaTitle = ""
 	g.MangaDescription = ""
 	g.MangaChapterData = nil
-	g.MangaCoverArtImage.Deallocate()
+	if g.MangaCoverArtImage != nil {
+		g.MangaCoverArtImage.Deallocate()
+	}
+	
 	g.MangaCoverArtImage = nil
 }
 
@@ -50,6 +56,7 @@ func (g *Game) MangaUpdate() {
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		g.CurrentScreen = BrowseScreen
+		g.MangaFetchCancel()
 		g.GameManga.Clean()
 		return
 	}
@@ -142,8 +149,15 @@ func (g *Game) MangaHandleChapterClick(chapter MangadexMangaChapterData) {
 	g.IsLoadingChapter = true
 	g.ChapterLoadErr = nil
 
+	ctx, cancel := context.WithCancel(context.Background())
+	g.FetchImageCancel = cancel
+
 	go func() {
-		result, err := FetchChapter(chapter.Id)
+		result, err := FetchChapter(chapter.Id, ctx)
+		if err != nil && errors.Is(err, context.Canceled) {
+			return
+		}
+
 		g.ChapterLoadErr = err
 		g.ChapterData = result.Chapter
 
@@ -159,8 +173,17 @@ func (g *Game) MangaHandleChapterClick(chapter MangadexMangaChapterData) {
 
 		for _, chapterData := range result.Chapter.Data {
 			go func() {
+				if g.CurrentScreen != ChapterScreen {
+					return
+				}
+
 				pageURL := result.BaseUrl + "/data/" + result.Chapter.Hash + "/" + chapterData
-				img, err := LoadImageFromUrl(pageURL)
+				img, err := LoadImageFromUrl(pageURL, ctx)
+				if err != nil {
+					// TODO(Dudu): Show retry button if the error is not a context cancelation.
+					return
+				}
+
 				g.FetchImageResult <- FetchImageResult{Image: img, Err: err, Id: chapterData}
 			}()
 		}

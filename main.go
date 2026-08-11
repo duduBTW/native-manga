@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	_ "embed"
 	_ "image/jpeg"
 	_ "image/png"
@@ -82,6 +83,8 @@ func (g *Game) Update() error {
 		}
 	case ChapterScreen:
 		{
+			g.ChapterUpdate()
+
 			if g.ChapterCount() == 0 {
 				return nil
 			}
@@ -145,7 +148,7 @@ func (g *Game) Fetch() error {
 			return err
 		}
 
-		imgCoverArt, err := LoadImageFromUrl(imageCoverArtURL + ".512.jpg")
+		imgCoverArt, err := LoadImageFromUrl(imageCoverArtURL+".512.jpg", context.Background())
 		if err != nil {
 			return err
 		}
@@ -153,44 +156,6 @@ func (g *Game) Fetch() error {
 		g.BrowseMangaImages[manga.Id] = ebiten.NewImageFromImage(imgCoverArt)
 	}
 
-	return nil
-}
-
-func (g *Game) Fetch2() error {
-	mangaID := "28b5d037-175d-4119-96f8-e860e408ebe9"
-	mangaResult, err := FetchManga(mangaID)
-	if err != nil {
-		return err
-	}
-
-	for _, title := range mangaResult.Data.Attributes.Title {
-		g.MangaTitle = title
-		break
-	}
-
-	for _, description := range mangaResult.Data.Attributes.Description {
-		g.MangaDescription = description
-		break
-	}
-
-	imageCoverArtURL, err := mangaResult.CoverArtImageUrl()
-	if err != nil {
-		return err
-	}
-
-	imgCoverArt, err := LoadImageFromUrl(imageCoverArtURL)
-	if err != nil {
-		return err
-	}
-
-	g.MangaCoverArtImage = ebiten.NewImageFromImage(imgCoverArt)
-
-	mangaChaptersResult, err := FetchMangaChapters(mangaID)
-	if err != nil {
-		return err
-	}
-
-	g.MangaChapterData = mangaChaptersResult.Data
 	return nil
 }
 
