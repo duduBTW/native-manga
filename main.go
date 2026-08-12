@@ -75,6 +75,11 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeigh
 
 func (g *Game) Update() error {
 	switch g.CurrentScreen {
+	case BrowseScreen:
+		{
+			g.BrowseUpdate()
+			g.BrowseUpdateAnimation()
+		}
 	case MangaScreen:
 		{
 			g.MangaCoverUpdate()

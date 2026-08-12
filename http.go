@@ -120,7 +120,7 @@ func FetchManga(mangaID string, ctx context.Context) (MangadexManga, error) {
 func FetchPopularNewTitles() (MangadexMangaCollection, error) {
 	var result MangadexMangaCollection
 
-	url := "https://api.mangadex.org/manga?includes[]=cover_art&includes[]=artist&includes[]=author&order[followedCount]=desc&contentRating[]=safe&contentRating[]=suggestive&hasAvailableChapters=true&createdAtSince=2026-07-11T03%3A00%3A00"
+	url := "https://api.mangadex.org/manga?limit=40&offset=0&includes[]=cover_art&contentRating[]=safe&contentRating[]=suggestive&includedTagsMode=AND&excludedTagsMode=OR"
 	res, err := http.Get(url)
 	if err != nil {
 		return result, err

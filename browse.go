@@ -8,6 +8,7 @@ import (
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
@@ -15,6 +16,25 @@ type GameBrowse struct {
 	BrowseMangaImages      map[string](*ebiten.Image)
 	BrowseData             []MangadexMangaData
 	BrowseFetchImageResult chan FetchImageResult
+
+	BrowseCurrentPage int
+	BrowseVisualPage  float64
+}
+
+func (g *Game) BrowseUpdate() {
+	_, scrollY := ebiten.Wheel()
+
+	if scrollY < 0 || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+		g.BrowseCurrentPage++
+	}
+
+	if scrollY > 0 || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+		g.BrowseCurrentPage--
+	}
+}
+
+func (g *Game) BrowseUpdateAnimation() {
+	g.BrowseVisualPage += (float64(g.BrowseCurrentPage) - g.BrowseVisualPage) * 0.1
 }
 
 func (g *Game) BrowseHandleMangarClick(manga MangadexMangaData) {
@@ -68,47 +88,55 @@ func (g *Game) BrowseHandleMangarClick(manga MangadexMangaData) {
 	}()
 }
 
-func (g *Game) DrawBrowseMangaGrid(screen *ebiten.Image, mangas []MangadexMangaData, bounds Bounds) {
-	itemWidth := bounds.W / 4
-	itemHeight := itemWidth * (732.0 / 512.0)
+func (g *Game) DrawBrowseMangaItem(screen *ebiten.Image, manga MangadexMangaData, bounds Bounds) {
+	img, ok := g.BrowseMangaImages[manga.Id]
+	if !ok {
+		return
+	}
 
-	row := 0
-	col := 0
+	imageWidth, imageHeight := float64(img.Bounds().Dx()), float64(img.Bounds().Dy())
+
+	scaleW := bounds.W / imageWidth
+	scaleH := bounds.H / imageHeight
+
+	scale := math.Max(scaleW, scaleH)
+
+	op := &ebiten.DrawImageOptions{}
+	op.Filter = ebiten.FilterLinear
+	op.GeoM.Scale(scale, scale)
+
+	offsetX := (bounds.W - (imageWidth * scale)) / 2
+	offsetY := (bounds.H - (imageHeight * scale)) / 2
+	op.GeoM.Translate(bounds.X+offsetX, bounds.Y+offsetY)
+
+	clipRect := image.Rect(
+		int(bounds.X),
+		int(bounds.Y),
+		int(bounds.X+bounds.W),
+		int(bounds.Y+bounds.H),
+	)
+	clipped := screen.SubImage(clipRect).(*ebiten.Image)
+	clipped.DrawImage(img, op)
+
+	g.ClickableRegions = append(g.ClickableRegions, ClickableRegion{
+		Bounds: Bounds{X: bounds.X, Y: bounds.Y, W: bounds.W, H: bounds.H},
+		OnClick: func() {
+			g.BrowseHandleMangarClick(manga)
+		},
+	})
+}
+func (g *Game) DrawBrowseMangaGrid(screen *ebiten.Image, mangas []MangadexMangaData, bounds Bounds, itemWidth, itemHeight float64) {
+	row := 0.0
+	col := 0.0
 	for _, manga := range mangas {
-		img, ok := g.BrowseMangaImages[manga.Id]
-		if !ok {
-			continue
-		}
+		x := bounds.X + (itemWidth * col)
+		y := bounds.Y + (itemHeight * row)
 
-		imageWidth, imageHeight := float64(img.Bounds().Dx()), float64(img.Bounds().Dy())
-
-		scaleW := itemWidth / imageWidth
-		scaleH := itemHeight / imageHeight
-
-		scale := math.Max(scaleW, scaleH)
-
-		op := &ebiten.DrawImageOptions{}
-		op.Filter = ebiten.FilterLinear
-		op.GeoM.Scale(scale, scale)
-
-		x := bounds.X + (itemWidth * float64(col))
-		y := bounds.Y + (itemHeight * float64(row))
-
-		offsetX := (itemWidth - (imageWidth * scale)) / 2
-		offsetY := (itemHeight - (imageHeight * scale)) / 2
-
-		op.GeoM.Translate(x+offsetX, y+offsetY)
-
-		clipRect := image.Rect(int(x), int(y), int(x+itemWidth), int(y+itemHeight))
-		clipped := screen.SubImage(clipRect).(*ebiten.Image)
-		clipped.DrawImage(img, op)
-
-		g.ClickableRegions = append(g.ClickableRegions, ClickableRegion{
-			Bounds: Bounds{X: x, Y: y, W: itemWidth, H: itemHeight},
-			OnClick: func() {
-				g.BrowseHandleMangarClick(manga)
-			},
-		})
+		g.DrawBrowseMangaItem(
+			screen,
+			manga,
+			Bounds{W: itemWidth, H: itemHeight, X: x, Y: y},
+		)
 
 		if col >= 3 {
 			col = 0
@@ -119,13 +147,45 @@ func (g *Game) DrawBrowseMangaGrid(screen *ebiten.Image, mangas []MangadexMangaD
 	}
 }
 
+func (g *Game) IsBrowseFullWidth() bool {
+	return g.ScreenWidth <= 800
+}
+
 func (g *Game) DrawBrowse(screen *ebiten.Image) {
 	vector.FillRect(screen, 0, 0, float32(g.ScreenWidth), float32(g.ScreenHeight), color.White, true)
+	halfScreen := g.ScreenWidth / 2
+	width := 0.0
+	if g.IsBrowseFullWidth() {
+		width = g.ScreenWidth
+	} else {
+		width = halfScreen
+	}
 
-	g.DrawBrowseMangaGrid(screen, g.BrowseData, Bounds{
-		X: 0,
-		Y: 0,
-		W: g.ScreenWidth,
-		H: g.ScreenHeight,
-	})
+	height := g.ScreenHeight
+	itemWidth := width / 4
+	itemHeight := itemWidth * (732.0 / 512.0)
+
+	rowsPerPage := math.Floor(height / itemHeight)
+	itemsPerPage := rowsPerPage * 4
+	mangaCount := float64(len(g.BrowseData))
+	pageCount := math.Ceil(mangaCount / itemsPerPage)
+
+	for i := 0.0; i < pageCount; i++ {
+		start := itemsPerPage * i
+		end := math.Min(start+itemsPerPage, mangaCount)
+
+		xOffset := width * float64(i-g.BrowseVisualPage)
+		yOffset := (height - (rowsPerPage * itemHeight)) / 2
+
+		g.DrawBrowseMangaGrid(screen, g.BrowseData[int(start):int(end)],
+			Bounds{
+				X: xOffset,
+				Y: yOffset,
+				W: width,
+				H: height,
+			},
+			itemWidth,
+			itemHeight,
+		)
+	}
 }
