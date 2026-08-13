@@ -32,6 +32,7 @@ const (
 
 type ClickableRegion struct {
 	Bounds  Bounds
+	Id      string
 	OnClick func()
 }
 

@@ -20,8 +20,12 @@ type GameManga struct {
 	MangaChapterData              []MangadexMangaChapterData
 	MangaFetchCancel              context.CancelFunc
 
+	SelectedChapterId string
+
 	MangaCurrentPage int
 	MangaVisualPage  float64
+
+	MangaLastX, MangaLastY float64
 }
 
 func (g *GameManga) Clean() {
@@ -30,14 +34,21 @@ func (g *GameManga) Clean() {
 	g.MangaTitle = ""
 	g.MangaDescription = ""
 	g.MangaChapterData = nil
+	g.SelectedChapterId = ""
+	g.MangaLastX = 0
+	g.MangaLastY = 0
 	if g.MangaCoverArtImage != nil {
 		g.MangaCoverArtImage.Deallocate()
 	}
-	
+
 	g.MangaCoverArtImage = nil
 }
 
 const mangaChapterPagePadding float64 = 80
+
+func (g *Game) MangaChapterIsKeyboardInteractable() bool {
+	return g.MangaCurrentPage > 1 || !g.IsMangaFullWidth() && g.MangaCurrentPage > 0
+}
 
 func (g *Game) UpdateMangaAnimation() {
 	g.MangaVisualPage += (float64(g.MangaCurrentPage) - g.MangaVisualPage) * 0.1
@@ -46,7 +57,8 @@ func (g *Game) UpdateMangaAnimation() {
 func (g *Game) MangaUpdate() {
 	_, scrollY := ebiten.Wheel()
 
-	if (scrollY < 0 || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight)) && g.MangaCurrentPage < int(g.MangaChapterPageCount()+1) {
+	// && g.MangaCurrentPage < int(g.MangaChapterPageCount()+1
+	if scrollY < 0 || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
 		g.MangaCurrentPage++
 	}
 
@@ -59,6 +71,57 @@ func (g *Game) MangaUpdate() {
 		g.MangaFetchCancel()
 		g.GameManga.Clean()
 		return
+	}
+
+	_mouseX, _mouseY := ebiten.CursorPosition()
+	mouseX, mouseY := float64(_mouseX), float64(_mouseY)
+	hasMoved := mouseX != g.MangaLastX || mouseY != g.MangaLastY
+	if hasMoved {
+		g.MangaLastX = mouseX
+		g.MangaLastY = mouseY
+		for _, region := range g.ClickableRegions {
+			if region.Bounds.Contains(mouseX, mouseY) {
+				g.SelectedChapterId = region.Id
+			}
+		}
+	}
+
+	selectChapterDirection := 0
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+		selectChapterDirection = 1
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
+		selectChapterDirection = -1
+	}
+	if selectChapterDirection != 0 && g.MangaChapterIsKeyboardInteractable() {
+		hasChangedSelection := false
+		for i, chapter := range g.MangaChapterData {
+			if g.SelectedChapterId != chapter.Id {
+				continue
+			}
+
+			newSelectedIndex := i + selectChapterDirection
+			if newSelectedIndex < 0 || newSelectedIndex > len(g.MangaChapterData)-1 {
+				break
+			}
+			hasChangedSelection = true
+			g.SelectedChapterId = g.MangaChapterData[newSelectedIndex].Id
+			break
+		}
+
+		if !hasChangedSelection {
+			g.SelectedChapterId = g.MangaChapterData[0].Id
+		}
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) && g.SelectedChapterId != "" && g.MangaChapterIsKeyboardInteractable() {
+		for _, region := range g.ClickableRegions {
+			if region.Id != g.SelectedChapterId {
+				continue
+			}
+
+			region.OnClick()
+			break
+		}
 	}
 }
 
@@ -96,8 +159,34 @@ func (g *Game) MangaChapterPerPage() float64 {
 	return math.Floor(g.MangaChapterPageHeight() / g.MangaChapterPageRowHeight())
 }
 
-func (g *Game) MangaChapterPageCount() float64 {
-	return math.Ceil(g.MangaChapterCount() / g.MangaChapterPerPage())
+func (g *Game) MangaChapterPageCount(bounds Bounds) [][]MangadexMangaChapterData {
+	var result [][]MangadexMangaChapterData
+	currentPageItems := []MangadexMangaChapterData{}
+	currentPageAccHeight := 0.0
+
+	_, bodyHeight := text.Measure("A", g.FontBody, 0)
+	for _, chapter := range g.MangaChapterData {
+		lines := WrapText(
+			chapter.Attributes.Chapter+chapter.Attributes.Title,
+			g.FontBody,
+			bounds.W-70,
+		)
+
+		chapterHeight := bodyHeight*float64(len(lines)) + 12
+		if currentPageAccHeight+chapterHeight > bounds.H {
+			currentPageAccHeight = 0
+			result = append(result, currentPageItems)
+			currentPageItems = []MangadexMangaChapterData{}
+		}
+
+		currentPageItems = append(currentPageItems, chapter)
+		currentPageAccHeight += chapterHeight
+	}
+
+	if len(currentPageItems) > 0 {
+		result = append(result, currentPageItems)
+	}
+	return result
 }
 
 func (g *Game) DrawMangaCover(screen *ebiten.Image, bounds Bounds) {
@@ -191,42 +280,72 @@ func (g *Game) MangaHandleChapterClick(chapter MangadexMangaChapterData) {
 }
 
 func (g *Game) DrawMangaChapterPage(screen *ebiten.Image, chapters []MangadexMangaChapterData, bounds Bounds) {
-	rowHeight := g.MangaChapterPageRowHeight()
-	for i, chapter := range chapters {
-		chapterTextOp := &text.DrawOptions{}
-		chapterTextOp.ColorScale.ScaleWithColor(color.Black)
-		x := bounds.X
-		y := bounds.Y + (rowHeight * float64(i))
-		chapterTextOp.GeoM.Translate(x, y)
-		text.Draw(screen, "Ch. "+chapter.Attributes.Chapter+"  "+chapter.Attributes.Title, g.FontBody, chapterTextOp)
+	currentHeight := bounds.Y
+	for _, chapter := range chapters {
+		ID := chapter.Id
+		isHovered := g.SelectedChapterId == ID
+		textColor := color.Black
+		initialHeight := currentHeight
+		if isHovered {
+			textColor = color.White
+		}
+
+		lines := WrapText(
+			chapter.Attributes.Title,
+			g.FontBody,
+			bounds.W-70,
+		)
+
+		_, bodyHeight := text.Measure("A", g.FontBody, 0)
+		if isHovered {
+			vector.FillRect(screen, float32(bounds.X), float32(initialHeight), float32(bounds.W), float32(bodyHeight)*float32(len(lines)), color.Black, true)
+		}
+
+		chapterNumOp := &text.DrawOptions{}
+		chapterNumOp.ColorScale.ScaleWithColor(textColor)
+		chapterNumOp.GeoM.Translate(bounds.X, currentHeight)
+		text.Draw(screen, chapter.Attributes.Chapter, g.FontBody, chapterNumOp)
+
+		for _, line := range lines {
+			chapterTextOp := &text.DrawOptions{}
+			chapterTextOp.ColorScale.ScaleWithColor(textColor)
+
+			chapterTextOp.GeoM.Translate(bounds.X+70, currentHeight)
+			currentHeight += bodyHeight
+			//chapterTextOp.LineSpacing = g.FontBody.Metrics().HLineGap
+
+			text.Draw(screen, line, g.FontBody, chapterTextOp)
+		}
 
 		g.ClickableRegions = append(g.ClickableRegions, ClickableRegion{
-			Bounds: Bounds{X: x, Y: y, W: bounds.W, H: rowHeight},
+			Id:     ID,
+			Bounds: Bounds{X: bounds.X, Y: initialHeight, W: bounds.W, H: currentHeight - initialHeight},
 			OnClick: func() {
 				g.MangaHandleChapterClick(chapter)
 			},
 		})
+
+		currentHeight += 12
 	}
 }
 
 func (g *Game) DrawMangaChapters(screen *ebiten.Image, x, y float64) {
 	padding := mangaChapterPagePadding
 
-	for i := 0.0; i < g.MangaChapterPageCount(); i++ {
-		start := g.MangaChapterPerPage() * i
-		end := math.Min(start+g.MangaChapterPerPage(), g.MangaChapterCount())
-		halfScreen := g.ScreenWidth / 2
-		width := 0.0
-		if g.IsMangaFullWidth() {
-			width = g.ScreenWidth
-		} else {
-			width = halfScreen
-		}
+	halfScreen := g.ScreenWidth / 2
+	width := 0.0
+	if g.IsMangaFullWidth() {
+		width = g.ScreenWidth
+	} else {
+		width = halfScreen
+	}
 
+	baseBounds := Bounds{X: y + padding, Y: y + padding, W: width - (padding * 2), H: g.MangaChapterPageHeight()}
+	for i, chapters := range g.MangaChapterPageCount(baseBounds) {
 		g.DrawMangaChapterPage(
 			screen,
-			g.MangaChapterData[int(start):int(end)],
-			Bounds{X: (width * i) + x + padding, Y: y + padding, W: width - (padding * 2), H: g.MangaChapterPageHeight()},
+			chapters,
+			Bounds{X: (width * float64(i)) + x + padding, Y: baseBounds.Y, W: baseBounds.W, H: baseBounds.H},
 		)
 	}
 }
