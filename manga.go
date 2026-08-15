@@ -56,9 +56,8 @@ func (g *Game) UpdateMangaAnimation() {
 
 func (g *Game) MangaUpdate() {
 	_, scrollY := ebiten.Wheel()
-
-	// && g.MangaCurrentPage < int(g.MangaChapterPageCount()+1
-	if scrollY < 0 || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+	baseBounds, _ := g.MangaChapterPageBaseBounds(0, 0)
+	if scrollY < 0 || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) && g.MangaCurrentPage < int(len(g.MangaChapterPageCount(baseBounds))+1) {
 		g.MangaCurrentPage++
 	}
 
@@ -159,6 +158,18 @@ func (g *Game) MangaChapterPerPage() float64 {
 	return math.Floor(g.MangaChapterPageHeight() / g.MangaChapterPageRowHeight())
 }
 
+func (g *Game) MangaChapterPageBaseBounds(x, y float64) (Bounds, float64) {
+	padding := mangaChapterPagePadding
+	halfScreen := g.ScreenWidth / 2
+	width := 0.0
+	if g.IsMangaFullWidth() {
+		width = g.ScreenWidth
+	} else {
+		width = halfScreen
+	}
+
+	return Bounds{X: x + padding, Y: y + padding, W: width - (padding * 2), H: g.MangaChapterPageHeight()}, width
+}
 func (g *Game) MangaChapterPageCount(bounds Bounds) [][]MangadexMangaChapterData {
 	var result [][]MangadexMangaChapterData
 	currentPageItems := []MangadexMangaChapterData{}
@@ -332,15 +343,7 @@ func (g *Game) DrawMangaChapterPage(screen *ebiten.Image, chapters []MangadexMan
 func (g *Game) DrawMangaChapters(screen *ebiten.Image, x, y float64) {
 	padding := mangaChapterPagePadding
 
-	halfScreen := g.ScreenWidth / 2
-	width := 0.0
-	if g.IsMangaFullWidth() {
-		width = g.ScreenWidth
-	} else {
-		width = halfScreen
-	}
-
-	baseBounds := Bounds{X: y + padding, Y: y + padding, W: width - (padding * 2), H: g.MangaChapterPageHeight()}
+	baseBounds, width := g.MangaChapterPageBaseBounds(x, y)
 	for i, chapters := range g.MangaChapterPageCount(baseBounds) {
 		g.DrawMangaChapterPage(
 			screen,

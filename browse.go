@@ -9,6 +9,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
@@ -19,6 +20,7 @@ type GameBrowse struct {
 
 	BrowseCurrentPage int
 	BrowseVisualPage  float64
+	BrowseSearchValue string
 }
 
 func (g *Game) BrowseUpdate() {
@@ -31,6 +33,8 @@ func (g *Game) BrowseUpdate() {
 	if scrollY > 0 || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
 		g.BrowseCurrentPage--
 	}
+
+	g.BrowseSearchValue += string(ebiten.AppendInputChars(nil))
 }
 
 func (g *Game) BrowseUpdateAnimation() {
@@ -151,6 +155,15 @@ func (g *Game) IsBrowseFullWidth() bool {
 	return g.ScreenWidth <= 800
 }
 
+func (g *Game) DrawInput(screen *ebiten.Image, bounds Bounds) {
+	op := &text.DrawOptions{}
+	op.GeoM.Translate(bounds.X, bounds.Y)
+	op.ColorScale.ScaleWithColor(color.Black)
+	text.Draw(screen, g.BrowseSearchValue, g.FontBodySM, op)
+	y := float32(bounds.Y + bounds.H)
+	vector.StrokeLine(screen, float32(bounds.X), y, float32(bounds.X+bounds.W), y, 2, color.Black, true)
+}
+
 func (g *Game) DrawBrowse(screen *ebiten.Image) {
 	vector.FillRect(screen, 0, 0, float32(g.ScreenWidth), float32(g.ScreenHeight), color.White, true)
 	halfScreen := g.ScreenWidth / 2
@@ -188,4 +201,6 @@ func (g *Game) DrawBrowse(screen *ebiten.Image) {
 			itemHeight,
 		)
 	}
+
+	g.DrawInput(screen, Bounds{X: 200, Y: 20, W: 200, H: 32})
 }

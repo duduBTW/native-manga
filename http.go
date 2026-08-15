@@ -66,7 +66,7 @@ func FetchChapter(chapterID string, ctx context.Context) (MangedexChapterResult,
 
 func FetchMangaChapters(mangaID string, ctx context.Context) (MangadexMangaChapterResponse, error) {
 	var result MangadexMangaChapterResponse
-	url := "https://api.mangadex.org/manga/" + mangaID + "/feed?translatedLanguage[]=en&limit=96&includes[]=scanlation_group&includes[]=user&order[volume]=desc&order[chapter]=desc&offset=0&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic&includeUnavailable=0"
+	url := "https://api.mangadex.org/manga/" + mangaID + "/feed?translatedLanguage[]=en&limit=396&includes[]=scanlation_group&includes[]=user&order[volume]=desc&order[chapter]=desc&offset=0&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic&includeUnavailable=1"
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
