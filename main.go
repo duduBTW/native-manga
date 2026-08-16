@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	_ "embed"
 	_ "image/jpeg"
 	_ "image/png"
@@ -78,6 +77,7 @@ func (g *Game) Update() error {
 	switch g.CurrentScreen {
 	case BrowseScreen:
 		{
+			g.BrowseCoverUpdate()
 			g.BrowseUpdate()
 			g.BrowseUpdateAnimation()
 		}
@@ -139,32 +139,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 }
 
-func (g *Game) Fetch() error {
-	result, err := FetchPopularNewTitles()
-	if err != nil {
-		return err
-	}
-
-	g.BrowseData = result.Data
-	g.BrowseMangaImages = make(map[string](*ebiten.Image), len(g.BrowseData))
-
-	for _, manga := range g.BrowseData {
-		imageCoverArtURL, err := manga.CoverArtImageUrl()
-		if err != nil {
-			return err
-		}
-
-		imgCoverArt, err := LoadImageFromUrl(imageCoverArtURL+".512.jpg", context.Background())
-		if err != nil {
-			return err
-		}
-
-		g.BrowseMangaImages[manga.Id] = ebiten.NewImageFromImage(imgCoverArt)
-	}
-
-	return nil
-}
-
 func (g *Game) LoadFonts() error {
 	titleTextFaceSource, err := text.NewGoTextFaceSource(bytes.NewReader(titleFontTTF))
 	if err != nil {
@@ -211,13 +185,9 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if err := g.Fetch(); err != nil {
-		log.Fatal(err)
-	}
-
 	ebiten.SetWindowSize(800, 1200)
 	ebiten.SetWindowTitle("Manga")
-	ebiten.SetWindowResizable(true)
+	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	if err := ebiten.RunGame(&g); err != nil {
 		log.Fatal(err)
 	}

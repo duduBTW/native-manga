@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -66,7 +67,7 @@ func FetchChapter(chapterID string, ctx context.Context) (MangedexChapterResult,
 
 func FetchMangaChapters(mangaID string, ctx context.Context) (MangadexMangaChapterResponse, error) {
 	var result MangadexMangaChapterResponse
-	url := "https://api.mangadex.org/manga/" + mangaID + "/feed?translatedLanguage[]=en&limit=396&includes[]=scanlation_group&includes[]=user&order[volume]=desc&order[chapter]=desc&offset=0&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic&includeUnavailable=1"
+	url := "https://api.mangadex.org/manga/" + mangaID + "/feed?translatedLanguage[]=en&limit=396&includes[]=scanlation_group&includes[]=user&order[volume]=desc&order[chapter]=desc&offset=0&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic&includeUnavailable=0"
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -117,15 +118,21 @@ func FetchManga(mangaID string, ctx context.Context) (MangadexManga, error) {
 	return result, err
 }
 
-func FetchPopularNewTitles() (MangadexMangaCollection, error) {
+func FetchPopularNewTitles(ctx context.Context) (MangadexMangaCollection, error) {
+	fmt.Println("fetching")
 	var result MangadexMangaCollection
 
 	url := "https://api.mangadex.org/manga?limit=40&offset=0&includes[]=cover_art&contentRating[]=safe&contentRating[]=suggestive&includedTagsMode=AND&excludedTagsMode=OR"
-	res, err := http.Get(url)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return result, err
 	}
 
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return result, err
+	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {

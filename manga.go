@@ -170,6 +170,7 @@ func (g *Game) MangaChapterPageBaseBounds(x, y float64) (Bounds, float64) {
 
 	return Bounds{X: x + padding, Y: y + padding, W: width - (padding * 2), H: g.MangaChapterPageHeight()}, width
 }
+
 func (g *Game) MangaChapterPageCount(bounds Bounds) [][]MangadexMangaChapterData {
 	var result [][]MangadexMangaChapterData
 	currentPageItems := []MangadexMangaChapterData{}

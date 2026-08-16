@@ -14,13 +14,52 @@ import (
 )
 
 type GameBrowse struct {
-	BrowseMangaImages      map[string](*ebiten.Image)
-	BrowseData             []MangadexMangaData
-	BrowseFetchImageResult chan FetchImageResult
+	BrowseIsInit                   bool
+	BrowseFetchCancel              context.CancelFunc
+	BrowseCoverArtFetchImageResult chan FetchImageResult
+	BrowseMangaImages              map[string](*ebiten.Image)
+	BrowseData                     []MangadexMangaData
+	BrowseFetchImageResult         chan FetchImageResult
 
 	BrowseCurrentPage int
 	BrowseVisualPage  float64
 	BrowseSearchValue string
+}
+
+func (g *Game) BrowseFetch() {
+	if g.BrowseFetchCancel != nil {
+		g.BrowseFetchCancel()
+		g.BrowseFetchCancel = nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	g.BrowseFetchCancel = cancel
+
+	go func() {
+		result, err := FetchPopularNewTitles(ctx)
+		if err != nil {
+			return
+		}
+
+		g.BrowseData = result.Data
+		g.BrowseMangaImages = make(map[string](*ebiten.Image), len(g.BrowseData))
+		g.BrowseCoverArtFetchImageResult = make(chan FetchImageResult, len(g.BrowseData))
+		for _, manga := range g.BrowseData {
+			go func() {
+				imageCoverArtURL, err := manga.CoverArtImageUrl()
+				if err != nil {
+					return
+				}
+
+				imgCoverArt, err := LoadImageFromUrl(imageCoverArtURL+".512.jpg", context.Background())
+				if err != nil {
+					return
+				}
+
+				fmt.Println("fetched", imageCoverArtURL, manga.Id)
+				g.BrowseCoverArtFetchImageResult <- FetchImageResult{Image: imgCoverArt, Err: err, Id: manga.Id}
+			}()
+		}
+	}()
 }
 
 func (g *Game) BrowseUpdate() {
@@ -35,6 +74,34 @@ func (g *Game) BrowseUpdate() {
 	}
 
 	g.BrowseSearchValue += string(ebiten.AppendInputChars(nil))
+	if inpututil.IsKeyJustPressed(ebiten.KeyBackspace) {
+		if len(g.BrowseSearchValue) > 0 {
+			valueRune := []rune(g.BrowseSearchValue)
+			g.BrowseSearchValue = string(valueRune[:len(valueRune)-1])
+		}
+	}
+
+	if !g.BrowseIsInit {
+		g.BrowseIsInit = true
+		g.BrowseFetch()
+	}
+}
+
+func (g *Game) BrowseCoverUpdate() {
+	if g.BrowseCoverArtFetchImageResult == nil {
+		return
+	}
+
+	select {
+	case res := <-g.BrowseCoverArtFetchImageResult:
+		{
+			fmt.Println("selected ", res.Id)
+			g.BrowseMangaImages[res.Id] = ebiten.NewImageFromImage(res.Image)
+		}
+	default:
+		{
+		}
+	}
 }
 
 func (g *Game) BrowseUpdateAnimation() {
@@ -129,6 +196,7 @@ func (g *Game) DrawBrowseMangaItem(screen *ebiten.Image, manga MangadexMangaData
 		},
 	})
 }
+
 func (g *Game) DrawBrowseMangaGrid(screen *ebiten.Image, mangas []MangadexMangaData, bounds Bounds, itemWidth, itemHeight float64) {
 	row := 0.0
 	col := 0.0
@@ -157,7 +225,7 @@ func (g *Game) IsBrowseFullWidth() bool {
 
 func (g *Game) DrawInput(screen *ebiten.Image, bounds Bounds) {
 	op := &text.DrawOptions{}
-	op.GeoM.Translate(bounds.X, bounds.Y)
+	op.GeoM.Translate(bounds.X+12, bounds.Y+8)
 	op.ColorScale.ScaleWithColor(color.Black)
 	text.Draw(screen, g.BrowseSearchValue, g.FontBodySM, op)
 	y := float32(bounds.Y + bounds.H)
@@ -174,23 +242,29 @@ func (g *Game) DrawBrowse(screen *ebiten.Image) {
 		width = halfScreen
 	}
 
-	height := g.ScreenHeight
-	itemWidth := width / 4
+	paddingTop := 32.0
+	itemsPerRow := 4.0
+	height := g.ScreenHeight - paddingTop
+	itemWidth := width / itemsPerRow
 	itemHeight := itemWidth * (732.0 / 512.0)
 
 	rowsPerPage := math.Floor(height / itemHeight)
-	itemsPerPage := rowsPerPage * 4
+	itemsPerPage := rowsPerPage * itemsPerRow
 	mangaCount := float64(len(g.BrowseData))
 	pageCount := math.Ceil(mangaCount / itemsPerPage)
+
+	inputWidth := 280.0
+	g.DrawInput(screen, Bounds{X: g.ScreenWidth - inputWidth, Y: 0, W: inputWidth, H: 28})
 
 	for i := 0.0; i < pageCount; i++ {
 		start := itemsPerPage * i
 		end := math.Min(start+itemsPerPage, mangaCount)
 
 		xOffset := width * float64(i-g.BrowseVisualPage)
-		yOffset := (height - (rowsPerPage * itemHeight)) / 2
+		yOffset := math.Max(32, (height-(rowsPerPage*itemHeight))/2)
 
-		g.DrawBrowseMangaGrid(screen, g.BrowseData[int(start):int(end)],
+		g.DrawBrowseMangaGrid(
+			screen, g.BrowseData[int(start):int(end)],
 			Bounds{
 				X: xOffset,
 				Y: yOffset,
@@ -201,6 +275,4 @@ func (g *Game) DrawBrowse(screen *ebiten.Image) {
 			itemHeight,
 		)
 	}
-
-	g.DrawInput(screen, Bounds{X: 200, Y: 20, W: 200, H: 32})
 }
