@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -118,11 +117,14 @@ func FetchManga(mangaID string, ctx context.Context) (MangadexManga, error) {
 	return result, err
 }
 
-func FetchPopularNewTitles(ctx context.Context) (MangadexMangaCollection, error) {
-	fmt.Println("fetching")
+func FetchPopularNewTitles(ctx context.Context, searchValue string) (MangadexMangaCollection, error) {
 	var result MangadexMangaCollection
 
 	url := "https://api.mangadex.org/manga?limit=40&offset=0&includes[]=cover_art&contentRating[]=safe&contentRating[]=suggestive&includedTagsMode=AND&excludedTagsMode=OR"
+
+	if searchValue != "" {
+		url += "&title=" + searchValue
+	}
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {

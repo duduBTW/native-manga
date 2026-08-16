@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -21,9 +22,10 @@ type GameBrowse struct {
 	BrowseData                     []MangadexMangaData
 	BrowseFetchImageResult         chan FetchImageResult
 
-	BrowseCurrentPage int
-	BrowseVisualPage  float64
-	BrowseSearchValue string
+	BrowseSearchValueChanged time.Time
+	BrowseCurrentPage        int
+	BrowseVisualPage         float64
+	BrowseSearchValue        string
 }
 
 func (g *Game) BrowseFetch() {
@@ -35,7 +37,7 @@ func (g *Game) BrowseFetch() {
 	g.BrowseFetchCancel = cancel
 
 	go func() {
-		result, err := FetchPopularNewTitles(ctx)
+		result, err := FetchPopularNewTitles(ctx, g.BrowseSearchValue)
 		if err != nil {
 			return
 		}
@@ -50,12 +52,11 @@ func (g *Game) BrowseFetch() {
 					return
 				}
 
-				imgCoverArt, err := LoadImageFromUrl(imageCoverArtURL+".512.jpg", context.Background())
+				imgCoverArt, err := LoadImageFromUrl(imageCoverArtURL+".512.jpg", ctx)
 				if err != nil {
 					return
 				}
 
-				fmt.Println("fetched", imageCoverArtURL, manga.Id)
 				g.BrowseCoverArtFetchImageResult <- FetchImageResult{Image: imgCoverArt, Err: err, Id: manga.Id}
 			}()
 		}
@@ -73,6 +74,8 @@ func (g *Game) BrowseUpdate() {
 		g.BrowseCurrentPage--
 	}
 
+	initialValue := g.BrowseSearchValue
+
 	g.BrowseSearchValue += string(ebiten.AppendInputChars(nil))
 	if inpututil.IsKeyJustPressed(ebiten.KeyBackspace) {
 		if len(g.BrowseSearchValue) > 0 {
@@ -81,8 +84,17 @@ func (g *Game) BrowseUpdate() {
 		}
 	}
 
+	if initialValue != g.BrowseSearchValue {
+		g.BrowseSearchValueChanged = time.Now()
+	}
+
 	if !g.BrowseIsInit {
 		g.BrowseIsInit = true
+		g.BrowseFetch()
+	}
+
+	if !g.BrowseSearchValueChanged.IsZero() && time.Now().After(g.BrowseSearchValueChanged.Add(400*time.Millisecond)) {
+		g.BrowseSearchValueChanged = time.Time{}
 		g.BrowseFetch()
 	}
 }
@@ -95,7 +107,6 @@ func (g *Game) BrowseCoverUpdate() {
 	select {
 	case res := <-g.BrowseCoverArtFetchImageResult:
 		{
-			fmt.Println("selected ", res.Id)
 			g.BrowseMangaImages[res.Id] = ebiten.NewImageFromImage(res.Image)
 		}
 	default:
@@ -116,9 +127,10 @@ func (g *Game) BrowseHandleMangarClick(manga MangadexMangaData) {
 	go func() {
 		mangaResult, err := FetchManga(manga.Id, ctx)
 		if err != nil {
-			fmt.Println(err)
 			return
 		}
+
+		g.MangaID = manga.Id
 		for _, title := range mangaResult.Data.Attributes.Title {
 			g.MangaTitle = title
 			break
@@ -162,6 +174,7 @@ func (g *Game) BrowseHandleMangarClick(manga MangadexMangaData) {
 func (g *Game) DrawBrowseMangaItem(screen *ebiten.Image, manga MangadexMangaData, bounds Bounds) {
 	img, ok := g.BrowseMangaImages[manga.Id]
 	if !ok {
+		vector.StrokeRect(screen, float32(bounds.X), float32(bounds.Y), float32(bounds.W), float32(bounds.H), 1, color.Black, true)
 		return
 	}
 
@@ -226,8 +239,16 @@ func (g *Game) IsBrowseFullWidth() bool {
 func (g *Game) DrawInput(screen *ebiten.Image, bounds Bounds) {
 	op := &text.DrawOptions{}
 	op.GeoM.Translate(bounds.X+12, bounds.Y+8)
-	op.ColorScale.ScaleWithColor(color.Black)
-	text.Draw(screen, g.BrowseSearchValue, g.FontBodySM, op)
+
+	textColor := color.NRGBA{R: 0, G: 0, B: 0, A: 255}
+	value := g.BrowseSearchValue
+	if value == "" {
+		value = "Type to search..."
+		textColor.A = 100
+	}
+
+	op.ColorScale.ScaleWithColor(textColor)
+	text.Draw(screen, value, g.FontBodySM, op)
 	y := float32(bounds.Y + bounds.H)
 	vector.StrokeLine(screen, float32(bounds.X), y, float32(bounds.X+bounds.W), y, 2, color.Black, true)
 }

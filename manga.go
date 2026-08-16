@@ -15,6 +15,7 @@ import (
 type GameManga struct {
 	MangaCoverArtImage            *ebiten.Image
 	MangaCoverArtFetchImageResult chan FetchImageResult
+	MangaID                       string
 	MangaTitle                    string
 	MangaDescription              string
 	MangaChapterData              []MangadexMangaChapterData
@@ -31,6 +32,7 @@ type GameManga struct {
 func (g *GameManga) Clean() {
 	g.MangaCurrentPage = 0
 	g.MangaVisualPage = 0
+	g.MangaID = ""
 	g.MangaTitle = ""
 	g.MangaDescription = ""
 	g.MangaChapterData = nil
@@ -202,14 +204,18 @@ func (g *Game) MangaChapterPageCount(bounds Bounds) [][]MangadexMangaChapterData
 }
 
 func (g *Game) DrawMangaCover(screen *ebiten.Image, bounds Bounds) {
+	img := g.MangaCoverArtImage
 	if g.MangaCoverArtImage == nil {
+		img = g.BrowseMangaImages[g.MangaID]
+	}
+	if img == nil {
 		return
 	}
 
 	op := &ebiten.DrawImageOptions{}
 	op.Filter = ebiten.FilterLinear
 
-	imageOriginalWidth, imageOriginalHeight := float64(g.MangaCoverArtImage.Bounds().Dx()), float64(g.MangaCoverArtImage.Bounds().Dy())
+	imageOriginalWidth, imageOriginalHeight := float64(img.Bounds().Dx()), float64(img.Bounds().Dy())
 	var scale float64 = 1
 
 	if imageOriginalWidth > bounds.W {
@@ -224,7 +230,7 @@ func (g *Game) DrawMangaCover(screen *ebiten.Image, bounds Bounds) {
 	op.GeoM.Scale(scale, scale)
 	op.GeoM.Translate(bounds.X, bounds.Y)
 	op.GeoM.Translate(((imageWidth/2)-(bounds.W/2))*-1, ((imageHeight/2)-(bounds.H/2))*-1)
-	screen.DrawImage(g.MangaCoverArtImage, op)
+	screen.DrawImage(img, op)
 }
 
 func (g *Game) DrawMangaDetails(screen *ebiten.Image, bounds Bounds) {
