@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -26,6 +27,8 @@ type GameBrowse struct {
 	BrowseCurrentPage        int
 	BrowseVisualPage         float64
 	BrowseSearchValue        string
+	BrowseSelectedMangaRow   AnimatedProp
+	BrowseSelectedMangaCol   AnimatedProp
 }
 
 func (g *Game) BrowseFetch() {
@@ -63,29 +66,51 @@ func (g *Game) BrowseFetch() {
 	}()
 }
 
+func (g *Game) BrowseSelectedMangaIndex() int {
+	gridNumber := math.Floor(float64(g.BrowseSelectedMangaCol.Value) / g.BrowseMangasPerRow())
+	restNumber := g.BrowseSelectedMangaCol.Value % int(g.BrowseMangasPerRow())
+	rowNumber := g.BrowseMangasPerRow() * float64(g.BrowseSelectedMangaRow.Value)
+
+	_, itemsPerPage := g.BrowseMangaGridCounds()
+	index := gridNumber * itemsPerPage
+	index += float64(restNumber)
+	index += rowNumber
+	return int(index)
+}
+
 func (g *Game) BrowseUpdate() {
 	_, scrollY := ebiten.Wheel()
 
-	if scrollY < 0 || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+	if scrollY < 0 {
 		g.BrowseCurrentPage++
 	}
-
-	if scrollY > 0 || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+	if scrollY > 0 {
 		g.BrowseCurrentPage--
 	}
 
-	initialValue := g.BrowseSearchValue
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
+		g.BrowseSelectedMangaRow.Value = int(math.Max(0, float64(g.BrowseSelectedMangaRow.Value-1)))
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+		g.BrowseSelectedMangaRow.Value = int(math.Min(g.BrowseMangaRowsPerPage()-1, float64(g.BrowseSelectedMangaRow.Value+1)))
+	}
+	if scrollY < 0 || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+		g.BrowseSelectedMangaCol.Value++
 
-	g.BrowseSearchValue += string(ebiten.AppendInputChars(nil))
-	if inpututil.IsKeyJustPressed(ebiten.KeyBackspace) {
-		if len(g.BrowseSearchValue) > 0 {
-			valueRune := []rune(g.BrowseSearchValue)
-			g.BrowseSearchValue = string(valueRune[:len(valueRune)-1])
+		if g.BrowseSelectedMangaCol.Value%int(g.BrowseMangasPerRow()) == 0 {
+			g.BrowseCurrentPage++
 		}
 	}
 
-	if initialValue != g.BrowseSearchValue {
-		g.BrowseSearchValueChanged = time.Now()
+	if scrollY > 0 || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+		if g.BrowseSelectedMangaCol.Value%int(g.BrowseMangasPerRow()) == 0 {
+			g.BrowseCurrentPage--
+		}
+		g.BrowseSelectedMangaCol.Value--
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		g.BrowseHandleMangarClick(g.BrowseData[g.BrowseSelectedMangaIndex()])
 	}
 
 	if !g.BrowseIsInit {
@@ -117,12 +142,34 @@ func (g *Game) BrowseCoverUpdate() {
 
 func (g *Game) BrowseUpdateAnimation() {
 	g.BrowseVisualPage += (float64(g.BrowseCurrentPage) - g.BrowseVisualPage) * 0.1
+	g.BrowseSelectedMangaCol.UpdateBy(0.16)
+	g.BrowseSelectedMangaRow.UpdateBy(0.2)
+}
+
+func (g *Game) BrowseHandleSearchInputChange(value string) {
+	initialValue := g.BrowseSearchValue
+
+	g.BrowseSearchValue = value
+
+	if initialValue != g.BrowseSearchValue {
+		g.BrowseSearchValueChanged = time.Now()
+	}
 }
 
 func (g *Game) BrowseHandleMangarClick(manga MangadexMangaData) {
 	g.CurrentScreen = MangaScreen
 	ctx, cancel := context.WithCancel(context.Background())
 	g.MangaFetchCancel = cancel
+
+	for _, title := range manga.Attributes.Title {
+		g.MangaTitle = title
+		break
+	}
+
+	for _, description := range manga.Attributes.Description {
+		g.MangaDescription = description
+		break
+	}
 
 	go func() {
 		mangaResult, err := FetchManga(manga.Id, ctx)
@@ -131,15 +178,6 @@ func (g *Game) BrowseHandleMangarClick(manga MangadexMangaData) {
 		}
 
 		g.MangaID = manga.Id
-		for _, title := range mangaResult.Data.Attributes.Title {
-			g.MangaTitle = title
-			break
-		}
-
-		for _, description := range mangaResult.Data.Attributes.Description {
-			g.MangaDescription = description
-			break
-		}
 
 		imageCoverArtURL, err := mangaResult.CoverArtImageUrl()
 		if err != nil {
@@ -171,7 +209,59 @@ func (g *Game) BrowseHandleMangarClick(manga MangadexMangaData) {
 	}()
 }
 
-func (g *Game) DrawBrowseMangaItem(screen *ebiten.Image, manga MangadexMangaData, bounds Bounds) {
+func (g *Game) BrowseMangasPerRow() float64 {
+	return 4.0
+}
+
+func (g *Game) BrowseMangaDimensions() (float64, float64, float64, float64) {
+	halfScreen := g.ScreenWidth / 2
+	width := 0.0
+	if g.IsBrowseFullWidth() {
+		width = g.ScreenWidth
+	} else {
+		width = halfScreen
+	}
+
+	paddingTop := 32.0
+	height := g.ScreenHeight - paddingTop
+	itemWidth := width / g.BrowseMangasPerRow()
+	itemHeight := itemWidth * (732.0 / 512.0)
+	return itemWidth, itemHeight, width, height
+}
+
+func (g *Game) BrowseMangaCount() float64 {
+	return float64(len(g.BrowseData))
+}
+
+func (g *Game) BrowseMangaRowsPerPage() float64 {
+	_, itemHeight, _, height := g.BrowseMangaDimensions()
+	return math.Floor(height / itemHeight)
+}
+
+func (g *Game) BrowseMangaGridCounds() (float64, float64) {
+	itemsPerPage := g.BrowseMangaRowsPerPage() * g.BrowseMangasPerRow()
+	mangaCount := float64(len(g.BrowseData))
+	pageCount := math.Ceil(mangaCount / itemsPerPage)
+
+	return pageCount, itemsPerPage
+}
+
+func drawTextWithShadow(dst *ebiten.Image, face text.Face, str string, x, y float64) {
+	// pass 1: shadow — same string, offset down a couple px, dark + semi-transparent
+	shadowOp := &text.DrawOptions{}
+	shadowOp.GeoM.Translate(x, y+2)
+	shadowOp.ColorScale.ScaleWithColor(color.RGBA{0, 0, 0, 255})
+	shadowOp.ColorScale.ScaleAlpha(0.5) // tweak to taste
+	text.Draw(dst, str, face, shadowOp)
+
+	// pass 2: real text on top, no offset
+	op := &text.DrawOptions{}
+	op.GeoM.Translate(x, y)
+	op.ColorScale.ScaleWithColor(color.White)
+	text.Draw(dst, str, face, op)
+}
+
+func (g *Game) DrawBrowseMangaItem(screen *ebiten.Image, manga MangadexMangaData, bounds Bounds, row, col, index float64) {
 	img, ok := g.BrowseMangaImages[manga.Id]
 	if !ok {
 		vector.StrokeRect(screen, float32(bounds.X), float32(bounds.Y), float32(bounds.W), float32(bounds.H), 1, color.Black, true)
@@ -202,15 +292,49 @@ func (g *Game) DrawBrowseMangaItem(screen *ebiten.Image, manga MangadexMangaData
 	clipped := screen.SubImage(clipRect).(*ebiten.Image)
 	clipped.DrawImage(img, op)
 
+	title := ""
+	for _, t := range manga.Attributes.Title {
+		title = t
+		break
+	}
+	lines := WrapText(
+		title,
+		g.FontCaption,
+		bounds.W-10,
+	)
+
+	_, captionHeight := text.Measure("A", g.FontCaption, 0)
+	isSelected := g.BrowseData[g.BrowseSelectedMangaIndex()].Id == manga.Id
+
+	if isSelected {
+		panelShade := newVerticalGradient(int(bounds.W), int(bounds.H), 0.72, 0.1, 3)
+		shadeOp := &ebiten.DrawImageOptions{}
+		shadeOp.GeoM.Translate(bounds.X, bounds.Y)
+		screen.DrawImage(panelShade, shadeOp)
+	} else {
+		titleHeight := captionHeight*float64(len(lines)) + 10
+		vector.FillRect(screen, float32(bounds.X-1), float32(bounds.Y+bounds.H-titleHeight), float32(bounds.W+2), float32(titleHeight), color.NRGBA{R: 0, G: 0, B: 0, A: 185}, false)
+	}
+
+	textOffsetTop := captionHeight
+	for _, line := range slices.Backward(lines) {
+		drawTextWithShadow(screen, g.FontCaption, line, bounds.X+5, bounds.Y+bounds.H-textOffsetTop-5)
+		textOffsetTop += captionHeight
+	}
+
 	g.ClickableRegions = append(g.ClickableRegions, ClickableRegion{
 		Bounds: Bounds{X: bounds.X, Y: bounds.Y, W: bounds.W, H: bounds.H},
 		OnClick: func() {
 			g.BrowseHandleMangarClick(manga)
 		},
+		OnHover: func() {
+			g.BrowseSelectedMangaRow.Value = int(row)
+			g.BrowseSelectedMangaCol.Value = int(col + (g.BrowseMangasPerRow() * index))
+		},
 	})
 }
 
-func (g *Game) DrawBrowseMangaGrid(screen *ebiten.Image, mangas []MangadexMangaData, bounds Bounds, itemWidth, itemHeight float64) {
+func (g *Game) DrawBrowseMangaGrid(screen *ebiten.Image, mangas []MangadexMangaData, bounds Bounds, itemWidth, itemHeight, index float64) {
 	row := 0.0
 	col := 0.0
 	for _, manga := range mangas {
@@ -221,6 +345,7 @@ func (g *Game) DrawBrowseMangaGrid(screen *ebiten.Image, mangas []MangadexMangaD
 			screen,
 			manga,
 			Bounds{W: itemWidth, H: itemHeight, X: x, Y: y},
+			row, col, index,
 		)
 
 		if col >= 3 {
@@ -236,53 +361,49 @@ func (g *Game) IsBrowseFullWidth() bool {
 	return g.ScreenWidth <= 800
 }
 
-func (g *Game) DrawInput(screen *ebiten.Image, bounds Bounds) {
-	op := &text.DrawOptions{}
-	op.GeoM.Translate(bounds.X+12, bounds.Y+8)
-
-	textColor := color.NRGBA{R: 0, G: 0, B: 0, A: 255}
-	value := g.BrowseSearchValue
-	if value == "" {
-		value = "Type to search..."
-		textColor.A = 100
+func newVerticalGradient(w, h int, bottomAlpha, topAlpha, bias float64) *ebiten.Image {
+	img := ebiten.NewImage(w, h)
+	for y := 0; y < h; y++ {
+		t := float64(y) / float64(h-1)
+		t = math.Pow(t, bias) // bias > 1 pushes the ramp later (more transparent top)
+		a := topAlpha + (bottomAlpha-topAlpha)*t
+		col := color.RGBA{0, 0, 0, uint8(a * 255)}
+		vector.StrokeLine(img, 0, float32(y), float32(w), float32(y), 1, col, false)
 	}
+	return img
+}
 
-	op.ColorScale.ScaleWithColor(textColor)
-	text.Draw(screen, value, g.FontBodySM, op)
-	y := float32(bounds.Y + bounds.H)
-	vector.StrokeLine(screen, float32(bounds.X), y, float32(bounds.X+bounds.W), y, 2, color.Black, true)
+func (g *Game) DrawBrowseHighlight(screen *ebiten.Image) {
+	itemWidth, itemHeight, width, height := g.BrowseMangaDimensions()
+	x := (width * (g.BrowseVisualPage * -1))
+	x += g.BrowseSelectedMangaCol.Visual * itemWidth
+
+	y := math.Max(32, (height-(g.BrowseMangaRowsPerPage()*itemHeight))/2)
+	y += g.BrowseSelectedMangaRow.Visual * itemHeight
+
+	vector.StrokeRect(screen, float32(x-2), float32(y-2), float32(itemWidth+4), float32(itemHeight+4), 4, color.Black, true)
 }
 
 func (g *Game) DrawBrowse(screen *ebiten.Image) {
 	vector.FillRect(screen, 0, 0, float32(g.ScreenWidth), float32(g.ScreenHeight), color.White, true)
-	halfScreen := g.ScreenWidth / 2
-	width := 0.0
-	if g.IsBrowseFullWidth() {
-		width = g.ScreenWidth
-	} else {
-		width = halfScreen
-	}
 
-	paddingTop := 32.0
-	itemsPerRow := 4.0
-	height := g.ScreenHeight - paddingTop
-	itemWidth := width / itemsPerRow
-	itemHeight := itemWidth * (732.0 / 512.0)
-
-	rowsPerPage := math.Floor(height / itemHeight)
-	itemsPerPage := rowsPerPage * itemsPerRow
-	mangaCount := float64(len(g.BrowseData))
-	pageCount := math.Ceil(mangaCount / itemsPerPage)
-
+	itemWidth, itemHeight, width, height := g.BrowseMangaDimensions()
+	pageCount, itemsPerPage := g.BrowseMangaGridCounds()
 	inputWidth := 280.0
-	g.DrawInput(screen, Bounds{X: g.ScreenWidth - inputWidth, Y: 0, W: inputWidth, H: 28})
+	iop := &InputOptions{}
+	iop.Bounds = Bounds{X: g.ScreenWidth - inputWidth, Y: 0, W: inputWidth, H: 28}
+	iop.Value = g.BrowseSearchValue
+	iop.Placeholder = "Type to search..."
+	iop.ID = "browse-search"
+	iop.OnChange = g.BrowseHandleSearchInputChange
+	g.DrawInput(screen, iop)
 
 	for i := 0.0; i < pageCount; i++ {
 		start := itemsPerPage * i
-		end := math.Min(start+itemsPerPage, mangaCount)
+		end := math.Min(start+itemsPerPage, g.BrowseMangaCount())
 
 		xOffset := width * float64(i-g.BrowseVisualPage)
-		yOffset := math.Max(32, (height-(rowsPerPage*itemHeight))/2)
+		yOffset := math.Max(32, (height-(g.BrowseMangaRowsPerPage()*itemHeight))/2)
 
 		g.DrawBrowseMangaGrid(
 			screen, g.BrowseData[int(start):int(end)],
@@ -294,6 +415,9 @@ func (g *Game) DrawBrowse(screen *ebiten.Image) {
 			},
 			itemWidth,
 			itemHeight,
+			i,
 		)
 	}
+
+	g.DrawBrowseHighlight(screen)
 }

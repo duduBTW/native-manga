@@ -1,6 +1,16 @@
 package main
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
+
+// Auth
+type MangadexAuth struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	CreatedAt    time.Time
+}
 
 // Browse
 type MangadexMangaCollection struct {

@@ -27,12 +27,14 @@ const (
 	MangaScreen Screen = iota
 	ChapterScreen
 	BrowseScreen
+	LoginScreen
 )
 
 type ClickableRegion struct {
 	Bounds  Bounds
 	Id      string
 	OnClick func()
+	OnHover func()
 }
 
 type Bounds struct {
@@ -52,12 +54,17 @@ type Game struct {
 	GameBrowse
 	GameManga
 	GameChapter
+	GameLogin
 
-	FontTitle  *text.GoTextFace
-	FontBody   text.Face
-	FontBodySM *text.GoTextFace
+	FontTitle   *text.GoTextFace
+	FontCaption *text.GoTextFace
+	FontBody    text.Face
+	FontBodySM  *text.GoTextFace
+
+	SelectedElID string
 
 	ClickableRegions []ClickableRegion
+	Inputs           [](*InputOptions)
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
@@ -100,14 +107,32 @@ func (g *Game) Update() error {
 			g.ChapterPageUpdate()
 			g.UpdateChapterAnimation()
 		}
+	case LoginScreen:
+		{
+			g.LoginUpdate()
+		}
 	}
 
-	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-		_mouseX, _mouseY := ebiten.CursorPosition()
-		mouseX, mouseY := float64(_mouseX), float64(_mouseY)
-		for _, region := range g.ClickableRegions {
-			if region.Bounds.Contains(mouseX, mouseY) {
+	//if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+	//	_mouseX, _mouseY := ebiten.CursorPosition()
+	//	mouseX, mouseY := float64(_mouseX), float64(_mouseY)
+	//	for _, region := range g.ClickableRegions {
+	//		if region.Bounds.Contains(mouseX, mouseY) {
+	//			region.OnClick()
+	//		}
+	//	}
+	//}
+
+	g.InputUpdate()
+
+	_mouseX, _mouseY := ebiten.CursorPosition()
+	mouseX, mouseY := float64(_mouseX), float64(_mouseY)
+	for _, region := range g.ClickableRegions {
+		if region.Bounds.Contains(mouseX, mouseY) {
+			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 				region.OnClick()
+			} else {
+				region.OnHover()
 			}
 		}
 	}
@@ -117,6 +142,7 @@ func (g *Game) Update() error {
 
 func (g *Game) Draw(screen *ebiten.Image) {
 	g.ClickableRegions = []ClickableRegion{}
+	g.Inputs = [](*InputOptions){}
 
 	switch g.CurrentScreen {
 	case BrowseScreen:
@@ -136,6 +162,10 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			g.DrawChapterPages(screen)
 			g.DrawChapterPagination(screen)
 		}
+	case LoginScreen:
+		{
+			g.LoginDraw(screen)
+		}
 	}
 }
 
@@ -148,6 +178,11 @@ func (g *Game) LoadFonts() error {
 	g.FontTitle = &text.GoTextFace{
 		Source: titleTextFaceSource,
 		Size:   40,
+	}
+
+	g.FontCaption = &text.GoTextFace{
+		Source: titleTextFaceSource,
+		Size:   21,
 	}
 
 	bodyTextFaceSource, err := text.NewGoTextFaceSource(bytes.NewReader(bodyRegularFontTTF))
@@ -178,7 +213,7 @@ func (g *Game) LoadFonts() error {
 
 func main() {
 	g := Game{
-		CurrentScreen: BrowseScreen,
+		CurrentScreen: LoginScreen,
 	}
 
 	if err := g.LoadFonts(); err != nil {

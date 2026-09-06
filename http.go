@@ -5,9 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
+	"time"
 )
 
 func LoadImageFromUrl(url string, ctx context.Context) (image.Image, error) {
@@ -120,7 +124,7 @@ func FetchManga(mangaID string, ctx context.Context) (MangadexManga, error) {
 func FetchPopularNewTitles(ctx context.Context, searchValue string) (MangadexMangaCollection, error) {
 	var result MangadexMangaCollection
 
-	url := "https://api.mangadex.org/manga?limit=40&offset=0&includes[]=cover_art&contentRating[]=safe&contentRating[]=suggestive&includedTagsMode=AND&excludedTagsMode=OR"
+	url := "https://api.mangadex.org/manga?limit=40&offset=0&includes[]=cover_art&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=pornographic&includedTagsMode=AND&excludedTagsMode=OR"
 
 	if searchValue != "" {
 		url += "&title=" + searchValue
@@ -142,5 +146,43 @@ func FetchPopularNewTitles(ctx context.Context, searchValue string) (MangadexMan
 	}
 
 	err = json.NewDecoder(res.Body).Decode(&result)
+	return result, err
+}
+
+var (
+)
+
+func MangadexOpIDConnect(username, password string, ctx context.Context) (MangadexAuth, error) {
+	var result MangadexAuth
+
+	endpoint := "https://auth.mangadex.org/realms/mangadex/protocol/openid-connect/token"
+
+	form := url.Values{}
+	form.Set("grant_type", "password")
+	form.Set("username", username)
+	form.Set("password", password)
+	form.Set("client_id", clientID)
+	form.Set("client_secret", clientSecret)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, strings.NewReader(form.Encode()))
+	if err != nil {
+		return result, err
+	}
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return result, err
+	}
+
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(res.Body)
+		return result, fmt.Errorf("mangadex auth failed: status %d, body: %s", res.StatusCode, string(body))
+	}
+
+	err = json.NewDecoder(res.Body).Decode(&result)
+	result.CreatedAt = time.Now()
 	return result, err
 }
