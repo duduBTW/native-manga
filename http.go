@@ -121,14 +121,37 @@ func FetchManga(mangaID string, ctx context.Context) (MangadexManga, error) {
 	return result, err
 }
 
-func FetchPopularNewTitles(ctx context.Context, searchValue, accessToken string) (MangadexMangaCollection, error) {
+func MangadexSearchManga(ctx context.Context, searchValue string) (MangadexMangaCollection, error) {
 	var result MangadexMangaCollection
 
-	url := "https://api.mangadex.org/user/follows/manga?limit=40&offset=0&includes[]=cover_art"
+	url := "https://api.mangadex.org/manga?limit=40&offset=0&includes[]=cover_art&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=pornographic&includedTagsMode=AND&excludedTagsMode=OR"
 	if searchValue != "" {
 		url += "&title=" + searchValue
 	}
 
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return result, err
+	}
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return result, err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return result, errors.New("Failed to fetch")
+	}
+
+	err = json.NewDecoder(res.Body).Decode(&result)
+	return result, err
+}
+
+func MangadexFetchUserFollowsManga(ctx context.Context, accessToken string) (MangadexMangaCollection, error) {
+	var result MangadexMangaCollection
+
+	url := "https://api.mangadex.org/user/follows/manga?limit=40&offset=0&includes[]=cover_art"
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return result, err
@@ -148,9 +171,6 @@ func FetchPopularNewTitles(ctx context.Context, searchValue, accessToken string)
 	err = json.NewDecoder(res.Body).Decode(&result)
 	return result, err
 }
-
-var (
-)
 
 func MangadexAuthenticate(username, password string, ctx context.Context) (MangadexAuth, error) {
 	form := url.Values{}

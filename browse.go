@@ -15,8 +15,14 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
+type BrowseTab int
+
+const (
+	BrowseSearchTab BrowseTab = iota
+	BrowseLibraryTab
+)
+
 type GameBrowse struct {
-	BrowseIsInit                   bool
 	BrowseFetchCancel              context.CancelFunc
 	BrowseCoverArtFetchImageResult chan FetchImageResult
 	BrowseMangaImages              map[string](*ebiten.Image)
@@ -29,6 +35,9 @@ type GameBrowse struct {
 	BrowseSearchValue        string
 	BrowseSelectedMangaRow   AnimatedProp
 	BrowseSelectedMangaCol   AnimatedProp
+
+	BrowseActiveTab      BrowseTab
+	BrowseLastFetchedTab BrowseTab
 }
 
 func (g *Game) BrowseFetch() {
@@ -39,8 +48,16 @@ func (g *Game) BrowseFetch() {
 	ctx, cancel := context.WithCancel(context.Background())
 	g.BrowseFetchCancel = cancel
 
+	var result MangadexMangaCollection
+	var err error
 	go func() {
-		result, err := FetchPopularNewTitles(ctx, g.BrowseSearchValue, g.Auth.AccessToken)
+		switch g.BrowseActiveTab {
+		case BrowseLibraryTab:
+			result, err = MangadexFetchUserFollowsManga(ctx, g.Auth.AccessToken)
+		case BrowseSearchTab:
+			result, err = MangadexSearchManga(ctx, g.BrowseSearchValue)
+		}
+
 		if err != nil {
 			return
 		}
@@ -79,6 +96,16 @@ func (g *Game) BrowseSelectedMangaIndex() int {
 }
 
 func (g *Game) BrowseUpdate() {
+	// Fetch
+	if g.BrowseLastFetchedTab != g.BrowseActiveTab {
+		g.BrowseLastFetchedTab = g.BrowseActiveTab
+		g.BrowseSelectedMangaCol.Value = 0
+		g.BrowseSelectedMangaRow.Value = 0
+		g.BrowseData = []MangadexMangaData{}
+		g.BrowseFetch()
+	}
+
+	// Update
 	_, scrollY := ebiten.Wheel()
 
 	if scrollY < 0 {
@@ -111,11 +138,6 @@ func (g *Game) BrowseUpdate() {
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
 		g.BrowseHandleMangarClick(g.BrowseData[g.BrowseSelectedMangaIndex()])
-	}
-
-	if !g.BrowseIsInit {
-		g.BrowseIsInit = true
-		g.BrowseFetch()
 	}
 
 	if !g.BrowseSearchValueChanged.IsZero() && time.Now().After(g.BrowseSearchValueChanged.Add(400*time.Millisecond)) {
@@ -378,14 +400,38 @@ func (g *Game) DrawBrowse(screen *ebiten.Image) {
 
 	itemWidth, itemHeight, width, height := g.BrowseMangaDimensions()
 	pageCount, itemsPerPage := g.BrowseMangaGridCounds()
-	inputWidth := 280.0
-	iop := &InputOptions{}
-	iop.Bounds = Bounds{X: g.ScreenWidth - inputWidth, Y: 0, W: inputWidth, H: 28}
-	iop.Value = g.BrowseSearchValue
-	iop.Placeholder = "Type to search..."
-	iop.ID = "browse-search"
-	iop.OnChange = g.BrowseHandleSearchInputChange
-	g.DrawInput(screen, iop)
+
+	if g.BrowseActiveTab == BrowseSearchTab {
+		inputWidth := 280.0
+		iop := &InputOptions{}
+		iop.Bounds = Bounds{X: g.ScreenWidth - inputWidth, Y: 0, W: inputWidth, H: 28}
+		iop.Value = g.BrowseSearchValue
+		iop.Placeholder = "Type to search..."
+		iop.ID = "browse-search"
+		iop.OnChange = g.BrowseHandleSearchInputChange
+		g.DrawInput(screen, iop)
+	}
+
+	bop := &ButtonOptions{}
+	bop.TextContent = "Library"
+	bop.OnClick = func() {
+		g.BrowseActiveTab = BrowseLibraryTab
+	}
+	if g.BrowseActiveTab != BrowseLibraryTab {
+		bop.Variant = ButtonSeconday
+	}
+	g.DrawButton(screen, bop)
+
+	bop.TextContent = "Search"
+	bop.X += ButtonWidth() + 2
+	bop.OnClick = func() {
+		g.BrowseActiveTab = BrowseSearchTab
+	}
+	bop.Variant = ButtonPrimary
+	if g.BrowseActiveTab != BrowseSearchTab {
+		bop.Variant = ButtonSeconday
+	}
+	g.DrawButton(screen, bop)
 
 	for i := 0.0; i < pageCount; i++ {
 		start := itemsPerPage * i

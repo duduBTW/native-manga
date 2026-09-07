@@ -38,7 +38,6 @@ const (
 	ChapterScreen
 	BrowseScreen
 	LoginScreen
-	HomeScreen
 )
 
 type ClickableRegion struct {
@@ -245,13 +244,13 @@ func (g *Game) Authenticate() {
 	}
 
 	g.Auth = auth
-	g.CurrentScreen = HomeScreen 
+	g.CurrentScreen = BrowseScreen
 }
 
 func main() {
-	g := Game{
-		CurrentScreen: LoginScreen,
-	}
+	g := Game{}
+	g.CurrentScreen = LoginScreen
+	g.BrowseActiveTab = BrowseLibraryTab
 	g.Authenticate()
 
 	if err := g.LoadFonts(); err != nil {

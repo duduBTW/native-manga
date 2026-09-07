@@ -8,7 +8,8 @@ import (
 )
 
 func isCJK(r rune) bool {
-	return unicode.In(r,
+	return unicode.In(
+		r,
 		unicode.Han, // kanji
 		unicode.Hiragana,
 		unicode.Katakana,

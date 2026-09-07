@@ -92,3 +92,56 @@ func (g *Game) DrawInput(screen *ebiten.Image, iop *InputOptions) {
 	y := float32(bounds.Y + bounds.H)
 	vector.StrokeLine(screen, float32(bounds.X), y, float32(bounds.X+bounds.W), y, 2, strokeColor, true)
 }
+
+const (
+	BUTTON_HEIGHT  = 32
+	BUTTON_PADDING = 24
+)
+
+type ButtonVariant int
+
+const (
+	ButtonPrimary ButtonVariant = iota
+	ButtonSeconday
+)
+
+var storedButtonWidth float64
+
+type ButtonOptions struct {
+	TextContent string
+	OnClick     func()
+	Variant     ButtonVariant
+	Bounds
+}
+
+func (g *Game) DrawButton(screen *ebiten.Image, bop *ButtonOptions) {
+	bodyWidth, bodyHeight := text.Measure(bop.TextContent, g.FontBodySM, 0)
+
+	bounds := bop.Bounds
+
+	op := &text.DrawOptions{}
+	op.ColorScale.ScaleWithColor(color.White)
+	op.GeoM.Translate(bounds.X+12, bounds.Y+(bodyHeight/2))
+
+	btnW := bodyWidth + BUTTON_PADDING
+	storedButtonWidth = btnW
+
+	bgColor := color.NRGBA{R: 0, G: 0, B: 0, A: 255}
+	if bop.Variant == ButtonSeconday {
+		bgColor.A = 170
+	}
+	vector.FillRect(screen,
+		float32(bounds.X), float32(bounds.Y), float32(btnW), float32(LOGIN_LINE_HEIGHT),
+		bgColor, false)
+
+	text.Draw(screen, bop.TextContent, g.FontBodySM, op)
+
+	g.ClickableRegions = append(g.ClickableRegions, ClickableRegion{
+		Bounds:  Bounds{X: bounds.X, Y: bounds.Y, W: btnW, H: BUTTON_HEIGHT},
+		OnClick: bop.OnClick,
+	})
+}
+
+func ButtonWidth() float64 {
+	return storedButtonWidth
+}
