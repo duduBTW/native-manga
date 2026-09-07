@@ -40,7 +40,7 @@ func (g *Game) BrowseFetch() {
 	g.BrowseFetchCancel = cancel
 
 	go func() {
-		result, err := FetchPopularNewTitles(ctx, g.BrowseSearchValue)
+		result, err := FetchPopularNewTitles(ctx, g.BrowseSearchValue, g.Auth.AccessToken)
 		if err != nil {
 			return
 		}
@@ -292,36 +292,6 @@ func (g *Game) DrawBrowseMangaItem(screen *ebiten.Image, manga MangadexMangaData
 	clipped := screen.SubImage(clipRect).(*ebiten.Image)
 	clipped.DrawImage(img, op)
 
-	title := ""
-	for _, t := range manga.Attributes.Title {
-		title = t
-		break
-	}
-	lines := WrapText(
-		title,
-		g.FontCaption,
-		bounds.W-10,
-	)
-
-	_, captionHeight := text.Measure("A", g.FontCaption, 0)
-	isSelected := g.BrowseData[g.BrowseSelectedMangaIndex()].Id == manga.Id
-
-	if isSelected {
-		panelShade := newVerticalGradient(int(bounds.W), int(bounds.H), 0.72, 0.1, 3)
-		shadeOp := &ebiten.DrawImageOptions{}
-		shadeOp.GeoM.Translate(bounds.X, bounds.Y)
-		screen.DrawImage(panelShade, shadeOp)
-	} else {
-		titleHeight := captionHeight*float64(len(lines)) + 10
-		vector.FillRect(screen, float32(bounds.X-1), float32(bounds.Y+bounds.H-titleHeight), float32(bounds.W+2), float32(titleHeight), color.NRGBA{R: 0, G: 0, B: 0, A: 185}, false)
-	}
-
-	textOffsetTop := captionHeight
-	for _, line := range slices.Backward(lines) {
-		drawTextWithShadow(screen, g.FontCaption, line, bounds.X+5, bounds.Y+bounds.H-textOffsetTop-5)
-		textOffsetTop += captionHeight
-	}
-
 	g.ClickableRegions = append(g.ClickableRegions, ClickableRegion{
 		Bounds: Bounds{X: bounds.X, Y: bounds.Y, W: bounds.W, H: bounds.H},
 		OnClick: func() {
@@ -361,27 +331,46 @@ func (g *Game) IsBrowseFullWidth() bool {
 	return g.ScreenWidth <= 800
 }
 
-func newVerticalGradient(w, h int, bottomAlpha, topAlpha, bias float64) *ebiten.Image {
-	img := ebiten.NewImage(w, h)
-	for y := 0; y < h; y++ {
-		t := float64(y) / float64(h-1)
-		t = math.Pow(t, bias) // bias > 1 pushes the ramp later (more transparent top)
-		a := topAlpha + (bottomAlpha-topAlpha)*t
-		col := color.RGBA{0, 0, 0, uint8(a * 255)}
-		vector.StrokeLine(img, 0, float32(y), float32(w), float32(y), 1, col, false)
-	}
-	return img
-}
-
 func (g *Game) DrawBrowseHighlight(screen *ebiten.Image) {
+	if len(g.BrowseData) == 0 {
+		return
+	}
+
 	itemWidth, itemHeight, width, height := g.BrowseMangaDimensions()
 	x := (width * (g.BrowseVisualPage * -1))
 	x += g.BrowseSelectedMangaCol.Visual * itemWidth
 
 	y := math.Max(32, (height-(g.BrowseMangaRowsPerPage()*itemHeight))/2)
 	y += g.BrowseSelectedMangaRow.Visual * itemHeight
-
 	vector.StrokeRect(screen, float32(x-2), float32(y-2), float32(itemWidth+4), float32(itemHeight+4), 4, color.Black, true)
+
+	manga := g.BrowseData[g.BrowseSelectedMangaIndex()]
+
+	title := ""
+	for _, t := range manga.Attributes.Title {
+		title = t
+		break
+	}
+	if title == "" {
+		return
+	}
+
+	textPadding := 10.0
+	lines := WrapText(
+		title,
+		g.FontCaption,
+		itemWidth-textPadding,
+	)
+
+	_, captionHeight := text.Measure("A", g.FontCaption, 0)
+	titleHeight := captionHeight*float64(len(lines)) + 10
+	vector.FillRect(screen, float32(x-1), float32(y+itemHeight-titleHeight), float32(itemWidth+2), float32(titleHeight), color.NRGBA{R: 0, G: 0, B: 0, A: 255}, false)
+
+	textOffsetTop := captionHeight
+	for _, line := range slices.Backward(lines) {
+		drawTextWithShadow(screen, g.FontCaption, line, x+5, y+itemHeight-textOffsetTop-5)
+		textOffsetTop += captionHeight
+	}
 }
 
 func (g *Game) DrawBrowse(screen *ebiten.Image) {

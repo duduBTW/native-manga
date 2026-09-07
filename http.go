@@ -121,11 +121,10 @@ func FetchManga(mangaID string, ctx context.Context) (MangadexManga, error) {
 	return result, err
 }
 
-func FetchPopularNewTitles(ctx context.Context, searchValue string) (MangadexMangaCollection, error) {
+func FetchPopularNewTitles(ctx context.Context, searchValue, accessToken string) (MangadexMangaCollection, error) {
 	var result MangadexMangaCollection
 
-	url := "https://api.mangadex.org/manga?limit=40&offset=0&includes[]=cover_art&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=pornographic&includedTagsMode=AND&excludedTagsMode=OR"
-
+	url := "https://api.mangadex.org/user/follows/manga?limit=40&offset=0&includes[]=cover_art"
 	if searchValue != "" {
 		url += "&title=" + searchValue
 	}
@@ -135,6 +134,7 @@ func FetchPopularNewTitles(ctx context.Context, searchValue string) (MangadexMan
 		return result, err
 	}
 
+	req.Header.Set("Authorization", "Bearer "+accessToken)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return result, err
