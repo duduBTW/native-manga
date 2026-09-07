@@ -38,6 +38,7 @@ const (
 	ChapterScreen
 	BrowseScreen
 	LoginScreen
+	HomeScreen
 )
 
 type ClickableRegion struct {
@@ -244,7 +245,7 @@ func (g *Game) Authenticate() {
 	}
 
 	g.Auth = auth
-	g.CurrentScreen = BrowseScreen
+	g.CurrentScreen = HomeScreen 
 }
 
 func main() {
@@ -265,7 +266,7 @@ func main() {
 	}
 }
 
-// Confif
+// Config
 func GetConfigDir() string {
 	baseDir, err := os.UserConfigDir()
 	if err != nil {
