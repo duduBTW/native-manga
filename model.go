@@ -10,6 +10,7 @@ type MangadexAuth struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 	CreatedAt    time.Time
+	ValidUntil   time.Time
 }
 
 // Browse

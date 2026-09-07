@@ -2,10 +2,15 @@ package main
 
 import (
 	"bytes"
+	"context"
 	_ "embed"
+	"encoding/json"
 	_ "image/jpeg"
 	_ "image/png"
 	"log"
+	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -20,6 +25,11 @@ var bodyRegularFontTTF []byte
 
 //go:embed assets/MochiyPopOne-Regular.ttf
 var bodyRegularJpFontTTF []byte
+
+const (
+	CONFIG_DIR       = "native-manga"
+	CONFIG_FILE_NAME = "settings.json"
+)
 
 type Screen int
 
@@ -62,6 +72,8 @@ type Game struct {
 	FontBodySM  *text.GoTextFace
 
 	SelectedElID string
+
+	Auth MangadexAuth
 
 	ClickableRegions []ClickableRegion
 	Inputs           [](*InputOptions)
@@ -131,7 +143,7 @@ func (g *Game) Update() error {
 		if region.Bounds.Contains(mouseX, mouseY) {
 			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 				region.OnClick()
-			} else {
+			} else if region.OnHover != nil {
 				region.OnHover()
 			}
 		}
@@ -211,10 +223,35 @@ func (g *Game) LoadFonts() error {
 	return nil
 }
 
+func (g *Game) Authenticate() {
+	auth, err := GetConfig()
+	if err != nil {
+		return
+	}
+
+	if auth.AccessToken == "" || auth.RefreshToken == "" {
+		return
+	}
+
+	if auth.ValidUntil.Before(time.Now()) {
+		auth, err = MangadexRefresh(auth.RefreshToken, context.Background())
+		if err != nil {
+			log.Fatal(err)
+		}
+		go func() {
+			WriteConfig(auth)
+		}()
+	}
+
+	g.Auth = auth
+	g.CurrentScreen = BrowseScreen
+}
+
 func main() {
 	g := Game{
 		CurrentScreen: LoginScreen,
 	}
+	g.Authenticate()
 
 	if err := g.LoadFonts(); err != nil {
 		log.Fatal(err)
@@ -226,4 +263,47 @@ func main() {
 	if err := ebiten.RunGame(&g); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// Confif
+func GetConfigDir() string {
+	baseDir, err := os.UserConfigDir()
+	if err != nil {
+		log.Fatalf("Failed to find user config dir: %v", err)
+	}
+
+	appDir := filepath.Join(baseDir, CONFIG_DIR)
+	filePath := filepath.Join(appDir, CONFIG_FILE_NAME)
+
+	err = os.MkdirAll(appDir, 0o755)
+	if err != nil {
+		log.Fatalf("Failed to create app directory: %v", err)
+	}
+
+	return filePath
+}
+
+func GetConfig() (MangadexAuth, error) {
+	var result MangadexAuth
+
+	configBytes, err := os.ReadFile(GetConfigDir())
+	if err != nil {
+		return result, err
+	}
+
+	err = json.Unmarshal(configBytes, &result)
+	if err != nil {
+		return result, err
+	}
+
+	return result, nil
+}
+
+func WriteConfig(data MangadexAuth) error {
+	jsonAuth, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(GetConfigDir(), jsonAuth, 0o644)
 }

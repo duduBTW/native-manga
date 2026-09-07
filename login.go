@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"image/color"
 	"math"
 
@@ -24,6 +25,25 @@ func (g *Game) LoginHandleUsernameChange(value string) {
 
 func (g *Game) LoginHandlePasswordChange(value string) {
 	g.LoginPassword = value
+}
+
+func (g *Game) LoginHandleEnterClick() {
+	if g.LoginUsername == "" || g.LoginPassword == "" {
+		return
+	}
+
+	go func() {
+		auth, err := MangadexAuthenticate(g.LoginUsername, g.LoginPassword,
+			context.Background())
+		if err != nil {
+			return
+		}
+
+		g.Auth = auth
+		g.CurrentScreen = BrowseScreen
+
+		WriteConfig(auth)
+	}()
 }
 
 func (g *Game) LoginFormDraw(screen *ebiten.Image, bounds Bounds) {
@@ -69,12 +89,12 @@ func (g *Game) LoginFormDraw(screen *ebiten.Image, bounds Bounds) {
 			iop.ID = "login-password"
 			iop.OnChange = g.LoginHandlePasswordChange
 
-			censoredValue := ""
-			for i := 0; i < len(g.LoginPassword); i++ {
-				censoredValue += "*"
-			}
+			//censoredValue := ""
+			//for i := 0; i < len(g.LoginPassword); i++ {
+			//	censoredValue += "*"
+			//}
 
-			iop.Value = censoredValue
+			iop.Value = g.LoginPassword
 			g.DrawInput(screen, iop)
 		}
 
@@ -94,7 +114,7 @@ func (g *Game) LoginFormDraw(screen *ebiten.Image, bounds Bounds) {
 			g.ClickableRegions = append(g.ClickableRegions, ClickableRegion{
 				Bounds: Bounds{X: bounds.X, Y: float64(btnY), W: btnW, H: LOGIN_LINE_HEIGHT},
 				OnClick: func() {
-					//
+					g.LoginHandleEnterClick()
 				},
 			})
 		}

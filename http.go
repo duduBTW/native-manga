@@ -152,18 +152,28 @@ func FetchPopularNewTitles(ctx context.Context, searchValue string) (MangadexMan
 var (
 )
 
-func MangadexOpIDConnect(username, password string, ctx context.Context) (MangadexAuth, error) {
-	var result MangadexAuth
-
-	endpoint := "https://auth.mangadex.org/realms/mangadex/protocol/openid-connect/token"
-
+func MangadexAuthenticate(username, password string, ctx context.Context) (MangadexAuth, error) {
 	form := url.Values{}
 	form.Set("grant_type", "password")
 	form.Set("username", username)
 	form.Set("password", password)
+	return MangadexOpIDConnect(form, ctx)
+}
+
+func MangadexRefresh(refreshToken string, ctx context.Context) (MangadexAuth, error) {
+	form := url.Values{}
+	form.Set("grant_type", "refresh_token")
+	form.Set("refresh_token", refreshToken)
+	return MangadexOpIDConnect(form, ctx)
+}
+
+func MangadexOpIDConnect(form url.Values, ctx context.Context) (MangadexAuth, error) {
+	var result MangadexAuth
+
 	form.Set("client_id", clientID)
 	form.Set("client_secret", clientSecret)
 
+	endpoint := "https://auth.mangadex.org/realms/mangadex/protocol/openid-connect/token"
 	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return result, err
@@ -183,6 +193,8 @@ func MangadexOpIDConnect(username, password string, ctx context.Context) (Mangad
 	}
 
 	err = json.NewDecoder(res.Body).Decode(&result)
-	result.CreatedAt = time.Now()
+	now := time.Now()
+	result.CreatedAt = now
+	result.ValidUntil = now.Add(15 * time.Minute)
 	return result, err
 }
